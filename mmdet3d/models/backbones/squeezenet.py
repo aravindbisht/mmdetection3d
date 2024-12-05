@@ -6,7 +6,7 @@ from typing import Sequence, Optional, Tuple
 from torch import Tensor
 
 @MODELS.register_module()
-class SqueezeNet(BaseModule):
+class SQUEEZE(BaseModule):
     """Backbone network using SqueezeNet architecture.
 
     Args:
@@ -23,7 +23,7 @@ class SqueezeNet(BaseModule):
                  conv_cfg: dict = dict(type='Conv2d', bias=False),
                  init_cfg: Optional[dict] = None,
                  pretrained: Optional[str] = None) -> None:
-        super(SqueezeNet, self).__init__(init_cfg=init_cfg)
+        super(SQUEEZE, self).__init__(init_cfg=init_cfg)
 
         # Define the SqueezeNet fire modules
         self.features = nn.Sequential(
