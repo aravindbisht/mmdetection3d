@@ -29,7 +29,7 @@ model = dict(
     pts_neck=dict(
         type='SQUEEZEFPN',
         in_channels=[64, 128, 256 , 512],
-        out_channels=[256, 256, 256, 256],
+        out_channels=[512, 512, 512, 512],
         #upsample_strides=[0.5, 1, 2],
         norm_cfg=dict(type='BN', eps=1e-3, momentum=0.01),
         upsample_cfg=dict(type='deconv', bias=False),
@@ -37,8 +37,8 @@ model = dict(
         ),
     pts_bbox_head=dict(
         type='CenterHead',
-        #in_channels=sum([128, 128, 128]),
-        in_channels=256,
+        in_channels=sum([128, 128, 128,128]),
+        #in_channels=256,
         tasks=[
             dict(num_class=1, class_names=['car']),
             dict(num_class=2, class_names=['truck', 'construction_vehicle']),
