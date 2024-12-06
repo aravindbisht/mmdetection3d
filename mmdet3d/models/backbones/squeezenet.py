@@ -1,10 +1,11 @@
 from mmengine.model import BaseModule
 from mmdet3d.registry import MODELS
 from mmcv.cnn import build_conv_layer, build_norm_layer
+import torch
 import torch.nn as nn
 from typing import Sequence, Optional, Tuple
 from torch import Tensor
-
+#from torch import nn
 @MODELS.register_module()
 class SQUEEZE(BaseModule):
     """Backbone network using SqueezeNet architecture.
@@ -30,11 +31,14 @@ class SQUEEZE(BaseModule):
 
         # Define the SqueezeNet fire modules
         self.features = nn.Sequential(
-            build_conv_layer(conv_cfg, in_channels, 96, kernel_size=7, stride=2),
-            build_norm_layer(norm_cfg, 96)[1],
+            #build_conv_layer(conv_cfg, in_channels, 96, kernel_size=7, stride=2),
+            build_conv_layer(conv_cfg, in_channels, 64, kernel_size=3, stride=2),
+            #build_norm_layer(norm_cfg, 96)[1],
+            build_norm_layer(norm_cfg, 64)[1],
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2, ceil_mode=True),
-            self._make_fire_module(96, 16, 64, 64),
+            #self._make_fire_module(96, 16, 64, 64),
+            self._make_fire_module(64, 16, 64, 64),
             self._make_fire_module(128, 16, 64, 64),
             self._make_fire_module(128, 32, 128, 128),
             nn.MaxPool2d(kernel_size=3, stride=2, ceil_mode=True),
@@ -53,28 +57,56 @@ class SQUEEZE(BaseModule):
         else:
             self.init_cfg = dict(type='Kaiming', layer='Conv2d')
 
+
+
     def _make_fire_module(self, in_channels, squeeze_channels, expand1x1_channels, expand3x3_channels):
-        return nn.Sequential(
-            build_conv_layer(self.conv_cfg, in_channels, squeeze_channels, kernel_size=1),
-            build_norm_layer(self.norm_cfg, squeeze_channels)[1],
-            nn.ReLU(inplace=True),
-            nn.Conv2d(squeeze_channels, expand1x1_channels, kernel_size=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(squeeze_channels, expand3x3_channels, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True)
-        )
+      layers = nn.Sequential()
+      
+      # Squeeze layer
+      squeeze = nn.Sequential(
+          build_conv_layer(self.conv_cfg, in_channels, squeeze_channels, kernel_size=1),
+          build_norm_layer(self.norm_cfg, squeeze_channels)[1],
+          nn.ReLU(inplace=True)
+      )
+      layers.add_module('squeeze', squeeze)
+      
+      # Expand 1x1 layer
+      expand1x1 = nn.Sequential(
+          build_conv_layer(self.conv_cfg, squeeze_channels, expand1x1_channels, kernel_size=1),
+          build_norm_layer(self.norm_cfg, expand1x1_channels)[1],
+          nn.ReLU(inplace=True)
+      )
+      layers.add_module('expand1x1', expand1x1)
+      
+      # Expand 3x3 layer
+      expand3x3 = nn.Sequential(
+          build_conv_layer(self.conv_cfg, squeeze_channels, expand3x3_channels, kernel_size=3, padding=1),
+          build_norm_layer(self.norm_cfg, expand3x3_channels)[1],
+          nn.ReLU(inplace=True)
+      )
+      layers.add_module('expand3x3', expand3x3)
+      
+      # Concatenation layer (handled within the forward function)
+      return layers
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, ...]:
-        """Forward function.
-
-        Args:
-            x (torch.Tensor): Input with shape (N, C, H, W).
-
-        Returns:
-            tuple[torch.Tensor]: Multi-scale features.
-        """
+    def forward(self, x):
+        """Forward function with correct concatenation for Fire modules."""
+        x = self.features[0](x)  # handled here as the initial layers are not fire modules
+        targeted_layers = [1,5, 8, 13]
         outs = []
-        for layer in self.features:
-            x = layer(x)
-            outs.append(x)
-        return tuple(outs)
+        for idx, layer in enumerate(self.features[1:], 1):
+            #print(idx,":",layer)
+            if isinstance(layer, nn.Sequential) and 'squeeze' in layer._modules:
+                # This is a Fire module, handle separately
+                squeeze_output = layer.squeeze(x)
+                x1 = layer.expand1x1(squeeze_output)
+                x3 = layer.expand3x3(squeeze_output)
+                x = torch.cat([x1, x3], 1)
+            else:
+                # Normal layer
+                x = layer(x)
+            if(idx in targeted_layers):
+              outs.append(x)
+              #print("Outs x",idx , x.shape)
+        #print(len(outs))
+        return outs
