@@ -81,9 +81,9 @@ class SQUEEZEFPN(BaseModule):
         lateral_features = [lateral_conv(feat) for lateral_conv, feat in zip(self.lateral_convs, x)]
 
         for i in range(len(lateral_features) - 2, -1, -1):
-            print(i)
-            print(i,lateral_features[i].shape)
-            print(i+1,lateral_features[i+1].shape)
+            # print(i)
+            # print(i,lateral_features[i].shape)
+            # print(i+1,lateral_features[i+1].shape)
             shape_of_tensor = lateral_features[i].size()
 
             # Extract specific dimensions for upsampleing
@@ -92,16 +92,16 @@ class SQUEEZEFPN(BaseModule):
             x_height = shape_of_tensor[2]
             x_width = shape_of_tensor[3]
             lateral_features[i] += nn.functional.interpolate(lateral_features[i + 1],  size=(x_height, x_width), mode='nearest')
-            print(i,lateral_features[i].shape)
+            #print(i,lateral_features[i].shape)
 
 
         # Apply the FPN convolutions
         fpn_features = [fpn_conv(feat) for fpn_conv, feat in zip(self.fpn_convs, lateral_features)]
-        for i, feature in enumerate(fpn_features):
-            print(f"FPN Feature {i} shape: {feature.shape}")
+        # for i, feature in enumerate(fpn_features):
+        #     print(f"FPN Feature {i} shape: {feature.shape}")
         pool = self.last_level_pool(lateral_features[0])
-        fpn_features.append(pool)
-        for i, feature in enumerate(fpn_features):
-            print(f"FPN Feature {i} shape: {feature.shape}")
-        #print(fpn_features)
-        return fpn_features
+        # fpn_features.append(pool)
+        # for i, feature in enumerate(fpn_features):
+        #     print(f"FPN Feature {i} shape: {feature.shape}")
+        # print(pool.shape)
+        return [pool]
