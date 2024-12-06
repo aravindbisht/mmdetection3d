@@ -24,6 +24,9 @@ class SQUEEZE(BaseModule):
                  init_cfg: Optional[dict] = None,
                  pretrained: Optional[str] = None) -> None:
         super(SQUEEZE, self).__init__(init_cfg=init_cfg)
+        self.conv_cfg = conv_cfg;
+        self.norm_cfg = norm_cfg;
+
 
         # Define the SqueezeNet fire modules
         self.features = nn.Sequential(
