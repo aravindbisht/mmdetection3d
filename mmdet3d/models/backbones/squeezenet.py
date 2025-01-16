@@ -31,16 +31,16 @@ class SQUEEZE(BaseModule):
             build_norm_layer(norm_cfg, 96)[1],
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2, ceil_mode=True),
-            self._make_fire_module(96, 16, 64, 64),
-            self._make_fire_module(128, 16, 64, 64),
-            self._make_fire_module(128, 32, 128, 128),
+            self._make_fire_module(norm_cfg, conv_cfg, 96, 16, 64, 64),
+            self._make_fire_module(norm_cfg, conv_cfg, 128, 16, 64, 64),
+            self._make_fire_module(norm_cfg, conv_cfg, 128, 32, 128, 128),
             nn.MaxPool2d(kernel_size=3, stride=2, ceil_mode=True),
-            self._make_fire_module(256, 32, 128, 128),
-            self._make_fire_module(256, 48, 192, 192),
-            self._make_fire_module(384, 48, 192, 192),
-            self._make_fire_module(384, 64, 256, 256),
+            self._make_fire_module(norm_cfg, conv_cfg, 256, 32, 128, 128),
+            self._make_fire_module(norm_cfg, conv_cfg, 256, 48, 192, 192),
+            self._make_fire_module(norm_cfg, conv_cfg, 384, 48, 192, 192),
+            self._make_fire_module(norm_cfg, conv_cfg, 384, 64, 256, 256),
             nn.MaxPool2d(kernel_size=3, stride=2, ceil_mode=True),
-            self._make_fire_module(512, 64, 256, 256),
+            self._make_fire_module(norm_cfg, conv_cfg, 512, 64, 256, 256),
         )
 
         if isinstance(pretrained, str):
@@ -50,10 +50,10 @@ class SQUEEZE(BaseModule):
         else:
             self.init_cfg = dict(type='Kaiming', layer='Conv2d')
 
-    def _make_fire_module(self, in_channels, squeeze_channels, expand1x1_channels, expand3x3_channels):
+    def _make_fire_module(self, norm_cfg, conv_cfg, in_channels, squeeze_channels, expand1x1_channels, expand3x3_channels):
         return nn.Sequential(
-            build_conv_layer(self.conv_cfg, in_channels, squeeze_channels, kernel_size=1),
-            build_norm_layer(self.norm_cfg, squeeze_channels)[1],
+            build_conv_layer(conv_cfg, in_channels, squeeze_channels, kernel_size=1),
+            build_norm_layer(norm_cfg, squeeze_channels)[1],
             nn.ReLU(inplace=True),
             nn.Conv2d(squeeze_channels, expand1x1_channels, kernel_size=1),
             nn.ReLU(inplace=True),
