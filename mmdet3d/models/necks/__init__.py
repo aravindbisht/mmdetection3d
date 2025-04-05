@@ -10,5 +10,5 @@ from .pseudo_lidar_fpn import PseudoLidarFPN
 
 __all__ = [
     'FPN', 'SECONDFPN', 'OutdoorImVoxelNeck', 'PointNetFPNeck', 'DLANeck',
-    'IndoorImVoxelNeck','SQUEEZEFPN', 'PseudoLidarFPN'
+    'IndoorImVoxelNeck', 'SQUEEZEFPN', 'PseudoLidarFPN', 'PseudoLidarImageFPN'
 ]

@@ -18,9 +18,8 @@ from .voxelnext import VoxelNeXt
 
 
 __all__ = [
-    'ResNet', 'ResNetV1d', 'ResNeXt', 'SSDVGG', 'HRNet', 'NoStemRegNet',
-    'SECOND', 'DGCNNBackbone', 'PointNet2SASSG', 'PointNet2SAMSG',
-    'MultiBackbone', 'DLANet', 'MinkResNet', 'Asymm3DSpconv',
-    'MinkUNetBackbone', 'SPVCNNBackbone', 'MinkUNetBackboneV2','SQUEEZE','VoxelNeXt',
-    'PseudoLidarBackbone'
+    'SECOND', 'PointNet2SASSG', 'PointNet2SAMSG', 'MultiBackbone', 
+    'ResNet', 'ResNetV1d', 'HRNet', 'RegNet', 'ResNeXt', 'SEResNet',
+    'Res2Net', 'HourglassNet', 'DetResNet', 'DetResNetV1d', 'PVCNN',
+    'PseudoLidarBackbone', 'PseudoLidarImageBackbone'
 ]

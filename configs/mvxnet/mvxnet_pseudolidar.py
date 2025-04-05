@@ -12,8 +12,8 @@ model = dict(
         voxel_type='dynamic',
         voxel_layer=dict(
             max_num_points=5,
-            point_cloud_range=[-50, -50, -5, 50, 50, 3],
-            voxel_size=[0.1, 0.1, 0.2],
+            point_cloud_range=point_cloud_range,
+            voxel_size=voxel_size,
             max_voxels=(120000, 160000)
         ),
         mean=[102.9801, 115.9465, 122.7717],
@@ -58,14 +58,11 @@ model = dict(
             align_corners=False,
             activate_out=True,
             fuse_out=False)),
-    
     pts_middle_encoder=dict(
         type='SparseEncoder',
         in_channels=128,
         sparse_shape=[41, 1600, 1408],
         order=('conv', 'norm', 'act')),
-    
-    # Pseudo-LiDAR backbone (replacing SECOND)
     pts_backbone=dict(
         type='PseudoLidarBackbone',
         in_channels=4,
@@ -74,17 +71,14 @@ model = dict(
         num_stages=4,
         strides=(1, 2, 2, 2),
         dilations=(1, 1, 1, 1),
-        out_indices=(0, 1, 2, 3),
-        norm_cfg=dict(type='BN', requires_grad=True)),
-    
-    # Pseudo-LiDAR neck (replacing SECONDFPN)
+        out_indices=(0, 1, 2, 3)),
     pts_neck=dict(
         type='PseudoLidarFPN',
         in_channels=[64, 128, 256, 512],
         out_channels=256,
         num_outs=4),
     
-    # Rest of the configuration remains same
+    # Rest of the model config remains same as original MVXNet
     pts_bbox_head=dict(
         type='Anchor3DHead',
         num_classes=3,
@@ -116,8 +110,6 @@ model = dict(
         loss_dir=dict(
             type='mmdet.CrossEntropyLoss', use_sigmoid=False,
             loss_weight=0.2)),
-    
-    # Training and testing settings
     train_cfg=dict(
         pts=dict(
             assigner=[
@@ -156,7 +148,7 @@ model = dict(
             nms_pre=100,
             max_num=50)))
 
-# Dataset settings (same as original)
+# Dataset settings
 dataset_type = 'KittiDataset'
 data_root = 'data/kitti/'
 class_names = ['Pedestrian', 'Cyclist', 'Car']
