@@ -18,6 +18,7 @@ from .voxelnext import VoxelNeXt
 
 
 __all__ = [
+    'VoxelNeXt',
     'SECOND', 'PointNet2SASSG', 'PointNet2SAMSG', 'MultiBackbone', 
     'ResNet', 'ResNetV1d', 'HRNet', 'RegNet', 'ResNeXt', 'SEResNet',
     'Res2Net', 'HourglassNet', 'DetResNet', 'DetResNetV1d', 'PVCNN',
