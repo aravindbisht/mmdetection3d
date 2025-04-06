@@ -1,6 +1,6 @@
 _base_ = ['../_base_/schedules/cosine.py', '../_base_/default_runtime.py']
 
-# Model settings with VoxelNeXt
+# Model settings optimized for VoxelNeXt
 model = dict(
     type='DynamicMVXFasterRCNN',
     data_preprocessor=dict(
@@ -8,10 +8,10 @@ model = dict(
         voxel=True,
         voxel_type='dynamic',
         voxel_layer=dict(
-            max_num_points=5,
+            max_num_points=10,  # Increased for better feature capture
             point_cloud_range=[-50, -50, -5, 50, 50, 3],
             voxel_size=[0.1, 0.1, 0.2],
-            max_voxels=(120000, 160000)),
+            max_voxels=(160000, 200000)),  # Increased capacity
         mean=[102.9801, 115.9465, 122.7717],
         std=[1.0, 1.0, 1.0],
         bgr_to_rgb=False,
@@ -28,27 +28,32 @@ model = dict(
         norm_eval=True,
         style='caffe'),
     
-    # VoxelNeXt components
     pts_voxel_encoder=dict(
         type='HardVFE',
         in_channels=4,
-        feat_channels=[64, 64],
+        feat_channels=[64, 128],
         with_distance=False,
         voxel_size=[0.1, 0.1, 0.2],
         with_cluster_center=True,
         with_voxel_center=True,
-        point_cloud_range=[-50, -50, -5, 50, 50, 3]),
+        point_cloud_range=[-50, -50, -5, 50, 50, 3],
+        norm_cfg=dict(type='BN1d', eps=1e-3, momentum=0.01)),
+    
     pts_middle_encoder=dict(
         type='SparseEncoder',
-        in_channels=64,
-        sparse_shape=[41, 1600, 1408],
+        in_channels=128,
+        sparse_shape=[41, 1024, 1024],
+        output_channels=128,
         order=('conv', 'norm', 'act')),
+    
     pts_backbone=dict(
         type='VoxelNeXt',
-        in_channels=64,
+        in_channels=128,  # Matches middle encoder output
         base_channels=64,
         out_indices=(0, 1, 2),
-        norm_cfg=dict(type='BN', eps=1e-3, momentum=0.01)),
+        norm_cfg=dict(type='BN', eps=1e-3, momentum=0.01),
+        with_cp=True),  # Enable checkpointing
+    
     pts_neck=dict(
         type='SECONDFPN',
         in_channels=[128, 256, 512],
