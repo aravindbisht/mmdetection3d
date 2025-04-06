@@ -3,8 +3,7 @@ import torch.nn as nn
 from mmengine.model import BaseModule
 from mmdet3d.registry import MODELS
 from mmdet3d.utils import ConfigType, OptConfigType
-# from mmdet3d.ops import SparseBasicBlock, SubMConv3d
-from mmcv.ops import SubMConv3d
+from mmcv.ops import SparseConvTensor, SubMConv3d
 from mmdet3d.models.layers import SparseBasicBlock, make_sparse_convmodule
 
 from mmcv.cnn import build_norm_layer
@@ -46,6 +45,12 @@ class VoxelNeXt(BaseModule):
     
     def forward(self, x):
         """Forward pass."""
+        if isinstance(x, SparseConvTensor):
+            if x.features.numel() == 0:
+                return x
+        elif x.numel() == 0:
+            return x
+        
         x = self.input_act(self.input_norm(self.input_conv(x)))
         outs = []
         for i, stage in enumerate(self.stages):

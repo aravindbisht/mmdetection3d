@@ -8,8 +8,9 @@ from .pseudo_lidar_image_fpn import PseudoLidarImageFPN
 from .second_fpn import SECONDFPN
 from .squeeze_fpn import SQUEEZEFPN
 from .pseudo_lidar_fpn import PseudoLidarFPN
+from .sparse_fpn import SparseFPN
 
 __all__ = [
     'FPN', 'SECONDFPN', 'OutdoorImVoxelNeck', 'PointNetFPNeck', 'DLANeck',
-    'IndoorImVoxelNeck', 'SQUEEZEFPN', 'PseudoLidarFPN', 'PseudoLidarImageFPN'
+    'IndoorImVoxelNeck', 'SQUEEZEFPN', 'PseudoLidarFPN', 'PseudoLidarImageFPN', 'SparseFPN'
 ]
