@@ -3,7 +3,10 @@ import torch.nn as nn
 from mmengine.model import BaseModule
 from mmdet3d.registry import MODELS
 from mmdet3d.utils import ConfigType, OptConfigType
-from mmdet3d.ops import SparseBasicBlock, SubMConv3d
+# from mmdet3d.ops import SparseBasicBlock, SubMConv3d
+from mmcv.ops import SubMConv3d
+from mmdet3d.models.layers import SparseBasicBlock, make_sparse_convmodule
+
 from mmcv.cnn import build_norm_layer
 
 @MODELS.register_module()
@@ -11,7 +14,7 @@ class VoxelNeXt(BaseModule):
     """VoxelNeXt backbone using mmdet3d's sparse ops."""
     
     def __init__(self,
-                 in_channels: int = 4,
+                 in_channels: int = 128,
                  base_channels: int = 64,
                  out_indices: tuple = (0, 1, 2),
                  norm_cfg: ConfigType = dict(type='BN', eps=1e-3, momentum=0.01),

@@ -11,6 +11,7 @@ from .nostem_regnet import NoStemRegNet
 from .pointnet2_sa_msg import PointNet2SAMSG
 from .pointnet2_sa_ssg import PointNet2SASSG
 from .pseudo_lidar import PseudoLidarBackbone
+from .pseudo_lidar_image import PseudoLidarImageBackbone
 from .second import SECOND
 from .spvcnn_backone import MinkUNetBackboneV2, SPVCNNBackbone
 from .squeezenet import SQUEEZE
@@ -18,9 +19,9 @@ from .voxelnext import VoxelNeXt
 
 
 __all__ = [
-    'VoxelNeXt',
-    'SECOND', 'PointNet2SASSG', 'PointNet2SAMSG', 'MultiBackbone', 
-    'ResNet', 'ResNetV1d', 'HRNet', 'RegNet', 'ResNeXt', 'SEResNet',
-    'Res2Net', 'HourglassNet', 'DetResNet', 'DetResNetV1d', 'PVCNN',
-    'PseudoLidarBackbone', 'PseudoLidarImageBackbone'
+    'ResNet', 'ResNetV1d', 'ResNeXt', 'SSDVGG', 'HRNet', 'NoStemRegNet',
+    'SECOND', 'DGCNNBackbone', 'PointNet2SASSG', 'PointNet2SAMSG',
+    'MultiBackbone', 'DLANet', 'MinkResNet', 'Asymm3DSpconv',
+    'MinkUNetBackbone', 'SPVCNNBackbone', 'MinkUNetBackboneV2','SQUEEZE',
+    'PseudoLidarBackbone', 'PseudoLidarImageBackbone','VoxelNeXt'
 ]

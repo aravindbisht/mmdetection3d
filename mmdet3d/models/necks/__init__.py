@@ -4,6 +4,7 @@ from mmdet.models.necks.fpn import FPN
 from .dla_neck import DLANeck
 from .imvoxel_neck import IndoorImVoxelNeck, OutdoorImVoxelNeck
 from .pointnet2_fp_neck import PointNetFPNeck
+from .pseudo_lidar_image_fpn import PseudoLidarImageFPN
 from .second_fpn import SECONDFPN
 from .squeeze_fpn import SQUEEZEFPN
 from .pseudo_lidar_fpn import PseudoLidarFPN
