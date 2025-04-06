@@ -21,23 +21,23 @@ model = dict(
         bgr_to_rgb=False,
         pad_size_divisor=32),
     
-    # Keep original image backbone
+    # Enhanced Image Processing
     img_backbone=dict(
         type='mmdet.ResNet',
         depth=50,
         num_stages=4,
-        out_indices=(0, 1, 2, 3),
+        out_indices=(1, 2, 3),  
         frozen_stages=1,
         norm_cfg=dict(type='BN', requires_grad=False),
         norm_eval=True,
-        style='caffe'),
+        style='pytorch'),
+        
     img_neck=dict(
         type='mmdet.FPN',
-        in_channels=[256, 512, 1024, 2048],
+        in_channels=[512, 1024, 2048],
         out_channels=256,
-        norm_cfg=dict(type='BN', requires_grad=False),
-        num_outs=5),
-    
+        num_outs=3),
+        
     # Pseudo-LiDAR components
     pts_voxel_encoder=dict(
         type='DynamicVFE',
@@ -77,6 +77,21 @@ model = dict(
         in_channels=[64, 128, 256, 512],
         out_channels=256,
         num_outs=4),
+    
+    # Fusion Components
+    fusion_layer=dict(
+        type='CrossModalityFusion',
+        pts_channels=[128, 256, 512],
+        img_channels=[256, 256, 256],
+        out_channels=256,
+        num_heads=4,
+        fusion_method='concatenation'),
+        
+    fusion_neck=dict(
+        type='mmdet.FPN',
+        in_channels=[256, 256, 256],
+        out_channels=256,
+        num_outs=3),
     
     # Complete 3D detection head with losses
     pts_bbox_head=dict(
