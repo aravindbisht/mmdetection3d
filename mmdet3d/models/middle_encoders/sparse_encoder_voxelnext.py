@@ -15,12 +15,14 @@ from mmdet3d.models.layers.spconv import IS_SPCONV2_AVAILABLE
 from mmdet3d.registry import MODELS
 from mmdet3d.structures import BaseInstance3DBoxes
 
+
 if IS_SPCONV2_AVAILABLE:
     from spconv.pytorch import SparseConvTensor, SparseSequential, SparseConvTensor, SparseModule, SubMConv3d, SparseConv2d, SubMConv2d, SparseConv3d, SparseInverseConv3d
 else:
-    from mmcv.ops import SparseConvTensor, SparseSequential
+    from mmcv.ops import SparseConvTensor, SparseSequential, SparseConvTensor, SparseModule, SubMConv3d, SparseConv2d, SubMConv2d, SparseConv3d, SparseInverseConv3d
 
 TwoTupleIntType = Tuple[Tuple[int]]
+
 
 def post_act_block(in_channels, out_channels, kernel_size, indice_key=None, stride=1, padding=0,
                    conv_type='subm', norm_fn=None):
@@ -263,7 +265,7 @@ class SparseEncoderVOXELNEXT(nn.Module):
 
         x_conv5.indices[:, 1:] *= 2
         x_conv6.indices[:, 1:] *= 4
-        x_conv4 = x_conv4.replace_feature(torch.cat([x_conv4.features, x_conv5.features, x_conv6.features]))
+        x_conv4 = replace_feature(x_conv4, torch.cat([x_conv4.features, x_conv5.features, x_conv6.features]))
         x_conv4.indices = torch.cat([x_conv4.indices, x_conv5.indices, x_conv6.indices])
 
         out = self.bev_out(x_conv4)

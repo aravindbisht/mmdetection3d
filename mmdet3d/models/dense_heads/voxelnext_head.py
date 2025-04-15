@@ -14,8 +14,13 @@ from mmdet3d.models.utils import (clip_sigmoid, draw_heatmap_gaussian,
 from mmdet3d.registry import MODELS, TASK_UTILS
 from mmdet3d.structures import Det3DDataSample, xywhr2xyxyr
 from ..layers import circle_nms, nms_bev
-from mmdet3d.models.layers import SparseBasicBlock, make_sparse_convmodule
-from spconv.pytorch import SparseSequential, SubMConv2d
+from mmdet3d.models.layers.spconv import IS_SPCONV2_AVAILABLE
+
+if IS_SPCONV2_AVAILABLE:
+    from spconv.pytorch import SparseSequential, SubMConv2d
+else:
+    from mmcv.ops import SparseSequential, SubMConv2d
+
 
 @MODELS.register_module()
 class VoxelNeXt_SeparateHead(BaseModule):
@@ -151,7 +156,7 @@ class VoxelNeXtHead(BaseModule):
                  loss_bbox: dict = dict(
                      type='mmdet.L1Loss', reduction='none', loss_weight=0.25),
                  separate_head: dict = dict(
-                     type='VoxelNeXt_SeparateHead',
+                     type='mmdet3d.VoxelNeXt_SeparateHead',
                      init_bias=-2.19,
                      final_kernel=3),
                  share_conv_channel: int = 64,
