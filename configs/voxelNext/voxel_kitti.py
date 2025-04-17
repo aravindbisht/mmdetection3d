@@ -6,6 +6,7 @@ _base_ = [
 # Basic parameters
 voxel_size = [0.05, 0.05, 0.1]
 point_cloud_range = [0, -40, -3, 70.4, 40, 1]
+class_names = ['Pedestrian', 'Cyclist', 'Car']
 # Model configuration
 model = dict(
     type='mmdet3d.VoxelNeXt',
@@ -33,36 +34,83 @@ model = dict(
         out_channels=256,
         num_outs=5),
     pts_voxel_encoder=dict(
-        type='mmdet3d.HardVFE', 
-        in_channels=4,  
-        feat_channels=[64],
-        with_distance=False),
+        type='mmdet3d.HardSimpleVFE', 
+        num_features=4,  
+    ),
     pts_middle_encoder=dict(
         type='mmdet3d.SparseEncoderVOXELNEXT',
-        in_channels=64,
+        in_channels=4,
         sparse_shape=[41, 1600, 1408],
         output_channels=128,
-        base_channels=16,
-        order=('conv', 'norm', 'act')),
+        order=('conv', 'norm', 'act'),
+        encoder_channels=(
+            (16, 16, 32),
+            (32, 32, 64),
+            (64, 64, 128),
+            (128, 128, 128),
+            (128, 128, 128),
+            (128, 128)
+        ),
+        encoder_paddings=(
+            (0, 0, 1),
+            (0, 0, 1),
+            (0, 0, 1),
+            (0, 0, 1),
+            (0, 0, [0, 1, 1]),
+            (0, 0)
+        ),
+        block_type='basicblock'
+    ),
     pts_backbone=dict(type='mmdet3d.IdentityBackbone', init_cfg=None),
+    # pts_bbox_head=dict(
+    #     type='mmdet3d.VoxelNeXtHead',
+    #     in_channels=128,
+    #     tasks=[dict(num_class=1, class_names=['Pedestrian']), 
+    #            dict(num_class=1, class_names=['Cyclist']),
+    #            dict(num_class=1, class_names=['Car'])],
+    #     bbox_coder=dict(
+    #         type='mmdet3d.VoxelNeXtBBoxCoder',
+    #         voxel_size=voxel_size[:2],
+    #         pc_range=point_cloud_range[:2],
+    #         out_size_factor=8,
+    #         code_size=9)),
     pts_bbox_head=dict(
         type='mmdet3d.VoxelNeXtHead',
         in_channels=128,
-        tasks=[dict(num_class=1, class_names=['Pedestrian']), 
-               dict(num_class=1, class_names=['Cyclist']),
-               dict(num_class=1, class_names=['Car'])],
+        tasks=[
+            dict(num_class=1, class_names=['Pedestrian']),
+            dict(num_class=1, class_names=['Cyclist']),
+            dict(num_class=1, class_names=['Car'])
+        ],
+        common_heads=dict(
+            reg=(2, 2), height=(1, 2), dim=(3, 2), rot=(2, 2), vel=(2, 2)
+        ),
+        share_conv_channel=128,
         bbox_coder=dict(
             type='mmdet3d.VoxelNeXtBBoxCoder',
-            voxel_size=voxel_size[:2],
-            pc_range=point_cloud_range[:2],
+            post_center_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
+            max_num=500,
+            score_threshold=0.1,
             out_size_factor=8,
-            code_size=9)),
+            voxel_size=voxel_size[:2],
+            code_size=7,
+            pc_range=point_cloud_range[:2]
+        ),
+        separate_head=dict(
+            type='VoxelNeXt_SeparateHead', init_bias=-2.19, final_kernel=3
+        ),
+        loss_cls=dict(type='mmdet.GaussianFocalLoss', reduction='mean'),
+        loss_bbox=dict(
+            type='mmdet.L1Loss', reduction='mean', loss_weight=0.25
+        ),
+        norm_bbox=True
+    ),
     train_cfg=dict(
         pts=dict(
             grid_size=[1600, 1408, 40],
             voxel_size=voxel_size,
             point_cloud_range=point_cloud_range,
-            out_size_factor=4,
+            out_size_factor=8,
             dense_reg=1,
             gaussian_overlap=0.1,
             max_objs=100,
@@ -72,7 +120,21 @@ model = dict(
             post_center_limit_range=point_cloud_range,
             max_per_img=100,
             score_threshold=0.1,
-            nms_thr=0.2)))
+            out_size_factor=8,
+            voxel_size=voxel_size[:2],
+            nms_type='rotate',
+            pre_max_size=1000,
+            post_max_size=83,
+            nms_thr=0.2,
+            pc_range=point_cloud_range[:2]
+        )
+        # pts=dict(
+        #     post_center_limit_range=point_cloud_range,
+        #     max_per_img=100,
+        #     score_threshold=0.1,
+        #     nms_thr=0.2))
+        )
+)
 
 
 # dataset settings

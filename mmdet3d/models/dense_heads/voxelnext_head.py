@@ -37,7 +37,7 @@ class VoxelNeXt_SeparateHead(BaseModule):
         conv_cfg (dict, optional): Config of conv layer.
             Default: dict(type='Conv2d')
         norm_cfg (dict, optional): Config of norm layer.
-            Default: dict(type='BN2d').
+            Default: dict(type='BN1d').
         bias (str, optional): Type of bias. Default: 'auto'.
     """
 
@@ -442,9 +442,13 @@ class VoxelNeXtHead(BaseModule):
                     ind[new_idx] = y * feature_map_size[0] + x
                     mask[new_idx] = 1
                     # TODO: support other outdoor dataset
-                    vx, vy = task_boxes[idx][k][7:]
-                    rot = task_boxes[idx][k][6]
-                    box_dim = task_boxes[idx][k][3:6]
+                    box = task_boxes[idx][k]
+                    if len(box) >= 9:
+                        vx, vy = box[7], box[8]
+                    else:
+                        vx, vy = 0, 0
+                    rot = box[6]
+                    box_dim = box[3:6]
                     if self.norm_bbox:
                         box_dim = box_dim.log()
                     anno_box[new_idx] = torch.cat([
@@ -452,8 +456,8 @@ class VoxelNeXtHead(BaseModule):
                         z.unsqueeze(0), box_dim,
                         torch.sin(rot).unsqueeze(0),
                         torch.cos(rot).unsqueeze(0),
-                        vx.unsqueeze(0),
-                        vy.unsqueeze(0)
+                        torch.tensor([vx], device=device, dtype=z.dtype),
+                        torch.tensor([vy], device=device, dtype=z.dtype)
                     ])
 
             heatmaps.append(heatmap)
