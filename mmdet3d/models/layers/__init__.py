@@ -16,6 +16,7 @@ from .pointnet_modules import (PAConvCUDASAModule, PAConvCUDASAModuleMSG,
                                build_sa_module)
 from .sparse_block import (SparseBasicBlock, SparseBottleneck,
                            make_sparse_convmodule)
+from .sparse_conv import SparseConv3d, SparseConvBlock
 from .torchsparse_block import (TorchSparseBasicBlock, TorchSparseBottleneck,
                                 TorchSparseConvModule)
 from .transformer import GroupFree3DMHA
@@ -32,5 +33,5 @@ __all__ = [
     'PointFPModule', 'PAConvSAModule', 'PAConvSAModuleMSG',
     'PAConvCUDASAModule', 'PAConvCUDASAModuleMSG', 'TorchSparseConvModule',
     'TorchSparseBasicBlock', 'TorchSparseBottleneck', 'MinkowskiConvModule',
-    'MinkowskiBasicBlock', 'MinkowskiBottleneck'
+    'MinkowskiBasicBlock', 'MinkowskiBottleneck', 'SparseConv3d', 'SparseConvBlock'
 ]
