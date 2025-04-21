@@ -202,7 +202,7 @@ test_pipeline = [
 
 train_dataloader = dict(
     batch_size=2,
-    num_workers=4,
+    num_workers=2,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
@@ -218,14 +218,14 @@ train_dataloader = dict(
 
 test_dataloader = dict(
     batch_size=1,
-    num_workers=4,
+    num_workers=2,
     persistent_workers=True,
     drop_last=False,
     sampler=dict(type='DefaultSampler', shuffle=False),
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file='kitti_infos_train.pkl',
+        ann_file='kitti_infos_val.pkl',
         data_prefix=dict(pts='training/velodyne_reduced', img='training/image_2'),
         pipeline=test_pipeline,
         modality=input_modality,
@@ -235,14 +235,14 @@ test_dataloader = dict(
 
 val_dataloader = dict(
     batch_size=1,
-    num_workers=4,
+    num_workers=2,
     persistent_workers=True,
     drop_last=False,
     sampler=dict(type='DefaultSampler', shuffle=False),
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file='kitti_infos_train.pkl',
+        ann_file='kitti_infos_val.pkl',
         data_prefix=dict(pts='training/velodyne_reduced', img='training/image_2'),
         pipeline=test_pipeline,
         modality=input_modality,
@@ -252,7 +252,7 @@ val_dataloader = dict(
 
 val_evaluator = dict(
     type='KittiMetric',
-    ann_file=data_root + 'kitti_infos_train.pkl',
+    ann_file=data_root + 'kitti_infos_val.pkl',
     metric='bbox',
     backend_args=backend_args)
 test_evaluator = val_evaluator
