@@ -21,6 +21,8 @@ from .torchsparse_block import (TorchSparseBasicBlock, TorchSparseBottleneck,
                                 TorchSparseConvModule)
 from .transformer import GroupFree3DMHA
 from .vote_module import VoteModule
+from .optimized_sparse_conv import OptimizedSparseConvBlock, OptimizedSparseConv3d
+
 
 __all__ = [
     'VoteModule', 'GroupFree3DMHA', 'EdgeFusionModule', 'DGCNNFAModule',
@@ -33,5 +35,6 @@ __all__ = [
     'PointFPModule', 'PAConvSAModule', 'PAConvSAModuleMSG',
     'PAConvCUDASAModule', 'PAConvCUDASAModuleMSG', 'TorchSparseConvModule',
     'TorchSparseBasicBlock', 'TorchSparseBottleneck', 'MinkowskiConvModule',
-    'MinkowskiBasicBlock', 'MinkowskiBottleneck', 'SparseConv3d', 'SparseConvBlock'
+    'MinkowskiBasicBlock', 'MinkowskiBottleneck', 'SparseConv3d', 'SparseConvBlock',
+    'OptimizedSparseConvBlock','OptimizedSparseConvBlock'
 ]
