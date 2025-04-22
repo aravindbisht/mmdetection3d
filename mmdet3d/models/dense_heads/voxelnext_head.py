@@ -223,7 +223,7 @@ class VoxelNeXtHead(Base3DDenseHead):
         iou_loss = []
         
         # Compute losses for each level with memory optimization
-        with torch.cuda.amp.autocast(enabled=True):
+        with torch.amp.autocast('cuda', enabled=True):
             for level in range(num_levels):
                 # Reshape predictions efficiently
                 cls_score = cls_scores[level]  # (B, C, H, W, D)
@@ -233,12 +233,22 @@ class VoxelNeXtHead(Base3DDenseHead):
                 
                 # Get shapes and ensure they match
                 B, C, H, W, D = cls_score.shape
-                total_elements = B * H * W * D
+                total_elements = H * W * D
+                
+                # Verify tensor sizes before reshaping
+                expected_size = B * C * total_elements
+                if cls_score.numel() != expected_size:
+                    raise ValueError(f'Tensor size mismatch. Expected {expected_size} elements, got {cls_score.numel()}')
                 
                 # Reshape predictions for loss computation using view
+                cls_score = cls_score.permute(0, 2, 3, 4, 1).contiguous()  # (B, H, W, D, C)
                 cls_score = cls_score.view(B, total_elements, C)  # (B, H*W*D, C)
+                
+                bbox_pred = bbox_pred.permute(0, 2, 3, 4, 1).contiguous()  # (B, H, W, D, 7)
                 bbox_pred = bbox_pred.view(B, total_elements, 7)  # (B, H*W*D, 7)
+                
                 if self.use_direction_classifier:
+                    dir_cls_pred = dir_cls_pred.permute(0, 2, 3, 4, 1).contiguous()  # (B, H, W, D, 2)
                     dir_cls_pred = dir_cls_pred.view(B, total_elements, 2)  # (B, H*W*D, 2)
                 
                 # Create target tensors efficiently
