@@ -226,10 +226,10 @@ class VoxelNeXtHead(Base3DDenseHead):
         with torch.amp.autocast('cuda', enabled=True):
             for level in range(num_levels):
                 # Reshape predictions efficiently
-                cls_score = cls_scores[level]  # (B, C, H, W, D)
-                bbox_pred = bbox_preds[level]  # (B, 7, H, W, D)
+                cls_score = cls_scores[level].clone()  # (B, C, H, W, D)
+                bbox_pred = bbox_preds[level].clone()  # (B, 7, H, W, D)
                 if self.use_direction_classifier:
-                    dir_cls_pred = dir_cls_preds[level]  # (B, 2, H, W, D)
+                    dir_cls_pred = dir_cls_preds[level].clone()  # (B, 2, H, W, D)
                 
                 # Get shapes and ensure they match
                 B, C, H, W, D = cls_score.shape
@@ -252,8 +252,8 @@ class VoxelNeXtHead(Base3DDenseHead):
                     dir_cls_pred = dir_cls_pred.view(B, total_elements, 2)  # (B, H*W*D, 2)
                 
                 # Create target tensors efficiently
-                target_labels = torch.zeros((B, total_elements, C), device=cls_score.device)
-                target_bboxes = torch.zeros((B, total_elements, 7), device=bbox_pred.device)
+                target_labels = torch.zeros((B, total_elements, C), device=cls_score.device, dtype=cls_score.dtype)
+                target_bboxes = torch.zeros((B, total_elements, 7), device=bbox_pred.device, dtype=bbox_pred.dtype)
                 
                 # Fill target tensors using vectorized operations
                 valid_mask = (gt_labels_3d >= 0) & (gt_labels_3d < C)  # (B, max_num_gt)
