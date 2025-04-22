@@ -265,7 +265,13 @@ class VoxelNeXtHead(Base3DDenseHead):
                         # Ensure indices are within bounds
                         valid_indices = valid_indices[valid_indices < total_elements]
                         if len(valid_indices) > 0:
-                            target_labels[i, valid_indices, labels] = 1
+                            # Ensure labels and indices have the same length
+                            labels = labels[:len(valid_indices)]
+                            bboxes = bboxes[:len(valid_indices)]
+                            # Create one-hot encoding for labels
+                            for j, label in enumerate(labels):
+                                if label < C:  # Ensure label is within class range
+                                    target_labels[i, valid_indices[j], label] = 1
                             target_bboxes[i, valid_indices] = bboxes
                 
                 # Compute losses with mixed precision
@@ -284,6 +290,8 @@ class VoxelNeXtHead(Base3DDenseHead):
                             # Ensure indices are within bounds
                             valid_indices = valid_indices[valid_indices < total_elements]
                             if len(valid_indices) > 0:
+                                # Ensure indices and headings have the same length
+                                valid_indices = valid_indices[:len(valid_indices)]
                                 headings = gt_bboxes_3d[i, valid_indices, -1]
                                 target_direction[i, valid_indices] = (headings > 0).long()
                     
