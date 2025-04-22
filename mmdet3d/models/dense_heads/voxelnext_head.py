@@ -274,7 +274,13 @@ class VoxelNeXtHead(Base3DDenseHead):
                     # Compute direction loss
                     dir_loss.append(self.loss_dir(dir_cls_pred, target_direction))
                 
-                iou_loss.append(self.loss_iou(bbox_pred, target_bboxes))
+                # Compute IoU loss with proper reshaping
+                # Reshape predictions and targets to match expected format
+                bbox_pred_flat = bbox_pred.reshape(-1, 7)  # (B*H*W*D, 7)
+                target_bboxes_flat = target_bboxes.reshape(-1, 7)  # (B*H*W*D, 7)
+                
+                # Compute IoU loss
+                iou_loss.append(self.loss_iou(bbox_pred_flat, target_bboxes_flat))
         
         # Combine losses from all levels
         losses['loss_cls'] = sum(cls_loss) / num_levels
