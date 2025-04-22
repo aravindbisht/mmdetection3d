@@ -231,16 +231,19 @@ class VoxelNeXtHead(Base3DDenseHead):
                 if self.use_direction_classifier:
                     dir_cls_pred = dir_cls_preds[level]  # (B, 2, H, W, D)
                 
-                # Reshape predictions for loss computation using view
+                # Get shapes and ensure they match
                 B, C, H, W, D = cls_score.shape
-                cls_score = cls_score.view(B, H*W*D, C)  # (B, H*W*D, C)
-                bbox_pred = bbox_pred.view(B, H*W*D, 7)  # (B, H*W*D, 7)
+                total_elements = B * H * W * D
+                
+                # Reshape predictions for loss computation using view
+                cls_score = cls_score.view(B, total_elements, C)  # (B, H*W*D, C)
+                bbox_pred = bbox_pred.view(B, total_elements, 7)  # (B, H*W*D, 7)
                 if self.use_direction_classifier:
-                    dir_cls_pred = dir_cls_pred.view(B, H*W*D, 2)  # (B, H*W*D, 2)
+                    dir_cls_pred = dir_cls_pred.view(B, total_elements, 2)  # (B, H*W*D, 2)
                 
                 # Create target tensors efficiently
-                target_labels = torch.zeros((B, H*W*D, C), device=cls_score.device)
-                target_bboxes = torch.zeros((B, H*W*D, 7), device=bbox_pred.device)
+                target_labels = torch.zeros((B, total_elements, C), device=cls_score.device)
+                target_bboxes = torch.zeros((B, total_elements, 7), device=bbox_pred.device)
                 
                 # Fill target tensors using vectorized operations
                 valid_mask = (gt_labels_3d >= 0) & (gt_labels_3d < C)  # (B, max_num_gt)
@@ -249,8 +252,11 @@ class VoxelNeXtHead(Base3DDenseHead):
                     if len(valid_indices) > 0:
                         labels = gt_labels_3d[i, valid_indices]
                         bboxes = gt_bboxes_3d[i, valid_indices]
-                        target_labels[i, valid_indices, labels] = 1
-                        target_bboxes[i, valid_indices] = bboxes
+                        # Ensure indices are within bounds
+                        valid_indices = valid_indices[valid_indices < total_elements]
+                        if len(valid_indices) > 0:
+                            target_labels[i, valid_indices, labels] = 1
+                            target_bboxes[i, valid_indices] = bboxes
                 
                 # Compute losses with mixed precision
                 cls_loss.append(self.loss_cls(cls_score, target_labels))
@@ -261,12 +267,15 @@ class VoxelNeXtHead(Base3DDenseHead):
                     dir_cls_pred = dir_cls_pred.reshape(-1, 2)  # (B*H*W*D, 2)
                     
                     # Create target direction tensor
-                    target_direction = torch.zeros((B, H*W*D), dtype=torch.long, device=dir_cls_pred.device)
+                    target_direction = torch.zeros((B, total_elements), dtype=torch.long, device=dir_cls_pred.device)
                     for i in range(B):
                         valid_indices = valid_mask[i].nonzero().squeeze(-1)
                         if len(valid_indices) > 0:
-                            headings = gt_bboxes_3d[i, valid_indices, -1]
-                            target_direction[i, valid_indices] = (headings > 0).long()
+                            # Ensure indices are within bounds
+                            valid_indices = valid_indices[valid_indices < total_elements]
+                            if len(valid_indices) > 0:
+                                headings = gt_bboxes_3d[i, valid_indices, -1]
+                                target_direction[i, valid_indices] = (headings > 0).long()
                     
                     # Reshape target direction for loss computation
                     target_direction = target_direction.reshape(-1)  # (B*H*W*D,)
@@ -278,6 +287,11 @@ class VoxelNeXtHead(Base3DDenseHead):
                 # Reshape predictions and targets to match expected format
                 bbox_pred_flat = bbox_pred.reshape(-1, 7)  # (B*H*W*D, 7)
                 target_bboxes_flat = target_bboxes.reshape(-1, 7)  # (B*H*W*D, 7)
+                
+                # Ensure tensors have the same size
+                min_size = min(bbox_pred_flat.size(0), target_bboxes_flat.size(0))
+                bbox_pred_flat = bbox_pred_flat[:min_size]
+                target_bboxes_flat = target_bboxes_flat[:min_size]
                 
                 # Compute IoU loss
                 iou_loss.append(self.loss_iou(bbox_pred_flat, target_bboxes_flat))
