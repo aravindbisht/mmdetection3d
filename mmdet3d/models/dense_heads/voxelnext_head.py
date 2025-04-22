@@ -246,14 +246,19 @@ class VoxelNeXtHead(Base3DDenseHead):
                 for j in range(max_num_gt):
                     if j < len(gt_labels_3d[i]) and gt_labels_3d[i][j] >= 0:  # Check if valid label
                         label = gt_labels_3d[i][j]
-                        target_labels[i*H*W*D + j, label] = 1
+                        if label < C:  # Ensure label is within valid range
+                            idx = i*H*W*D + j
+                            if idx < target_labels.shape[0]:  # Check if index is within bounds
+                                target_labels[idx, label] = 1
             
             # Create target bboxes for regression
             target_bboxes = torch.zeros((B*H*W*D, 7), device=bbox_pred.device)
             for i in range(B):
                 for j in range(max_num_gt):
                     if j < len(gt_bboxes_3d[i]) and gt_bboxes_3d[i][j].sum() > 0:  # Check if valid bbox
-                        target_bboxes[i*H*W*D + j] = gt_bboxes_3d[i][j]
+                        idx = i*H*W*D + j
+                        if idx < target_bboxes.shape[0]:  # Check if index is within bounds
+                            target_bboxes[idx] = gt_bboxes_3d[i][j]
             
             # Create target direction for direction classification
             if self.use_direction_classifier:
@@ -261,9 +266,11 @@ class VoxelNeXtHead(Base3DDenseHead):
                 for i in range(B):
                     for j in range(max_num_gt):
                         if j < len(gt_bboxes_3d[i]) and gt_bboxes_3d[i][j].sum() > 0:  # Check if valid bbox
-                            # Use the last dimension (heading) to determine direction
-                            heading = gt_bboxes_3d[i][j][-1]
-                            target_direction[i*H*W*D + j] = 1 if heading > 0 else 0
+                            idx = i*H*W*D + j
+                            if idx < target_direction.shape[0]:  # Check if index is within bounds
+                                # Use the last dimension (heading) to determine direction
+                                heading = gt_bboxes_3d[i][j][-1]
+                                target_direction[idx] = 1 if heading > 0 else 0
             
             # Classification loss
             cls_loss.append(self.loss_cls(cls_score, target_labels))
