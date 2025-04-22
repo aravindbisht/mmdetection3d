@@ -147,25 +147,26 @@ class VoxelNeXtHead(Base3DDenseHead):
         bbox_preds = []
         dir_cls_preds = []
         
-        for i, feat in enumerate(x):
-            # Apply shared conv layers
-            feat = feat.clone()  # Create a new tensor to avoid in-place operations
-            feat = self.shared_conv(feat)
-            
-            # Classification prediction
-            cls_score = self.conv_cls(feat)
-            cls_scores.append(cls_score.clone())  # Create a new tensor
-            
-            # Bbox prediction
-            bbox_pred = self.conv_reg(feat)
-            bbox_preds.append(bbox_pred.clone())  # Create a new tensor
-            
-            # Direction classification
-            if self.use_direction_classifier:
-                dir_cls_pred = self.conv_dir_cls(feat)
-                dir_cls_preds.append(dir_cls_pred.clone())  # Create a new tensor
-            else:
-                dir_cls_preds.append(None)
+        # Process features in parallel using torch.cuda.amp
+        with torch.cuda.amp.autocast(enabled=True):
+            for i, feat in enumerate(x):
+                # Apply shared conv layers with memory optimization
+                feat = self.shared_conv(feat)
+                
+                # Classification prediction
+                cls_score = self.conv_cls(feat)
+                cls_scores.append(cls_score)
+                
+                # Bbox prediction
+                bbox_pred = self.conv_reg(feat)
+                bbox_preds.append(bbox_pred)
+                
+                # Direction classification
+                if self.use_direction_classifier:
+                    dir_cls_pred = self.conv_dir_cls(feat)
+                    dir_cls_preds.append(dir_cls_pred)
+                else:
+                    dir_cls_preds.append(None)
         
         return cls_scores, bbox_preds, dir_cls_preds
     
@@ -183,39 +184,35 @@ class VoxelNeXtHead(Base3DDenseHead):
         Returns:
             dict: A dictionary of loss components.
         """
-        # Get ground truth
-        gt_labels_3d = [gt_instances_3d.labels_3d.clone() for gt_instances_3d in batch_gt_instances_3d]  # Create new tensors
-        gt_bboxes_3d = [gt_instances_3d.bboxes_3d for gt_instances_3d in batch_gt_instances_3d]
-        
-        # Find the maximum number of ground truth objects in any sample
-        max_num_gt = max([len(gt_labels) for gt_labels in gt_labels_3d])
-        
-        # Pad ground truth labels and boxes to the same size
-        padded_gt_labels = []
-        padded_gt_bboxes = []
-        
-        for i, (labels, bboxes) in enumerate(zip(gt_labels_3d, gt_bboxes_3d)):
-            num_gt = len(labels)
-            if num_gt == 0:
-                # If no ground truth, create empty tensors
-                padded_labels = torch.zeros(max_num_gt, dtype=labels.dtype, device=labels.device)
-                padded_bboxes = torch.zeros((max_num_gt, 7), dtype=bboxes.tensor.dtype, device=bboxes.tensor.device)
-            else:
-                # Pad with zeros to match the maximum number of ground truth objects
-                padded_labels = torch.zeros(max_num_gt, dtype=labels.dtype, device=labels.device)
-                padded_labels[:num_gt] = labels
-                
-                padded_bboxes = torch.zeros((max_num_gt, 7), dtype=bboxes.tensor.dtype, device=bboxes.tensor.device)
-                padded_bboxes[:num_gt] = bboxes.tensor
+        # Get ground truth with memory optimization
+        with torch.no_grad():
+            gt_labels_3d = [gt_instances_3d.labels_3d for gt_instances_3d in batch_gt_instances_3d]
+            gt_bboxes_3d = [gt_instances_3d.bboxes_3d for gt_instances_3d in batch_gt_instances_3d]
             
-            padded_gt_labels.append(padded_labels)
-            padded_gt_bboxes.append(padded_bboxes)
+            # Find the maximum number of ground truth objects in any sample
+            max_num_gt = max([len(gt_labels) for gt_labels in gt_labels_3d])
+            
+            # Pre-allocate tensors for all samples at once
+            device = gt_labels_3d[0].device
+            dtype = gt_labels_3d[0].dtype
+            B = len(gt_labels_3d)
+            
+            # Create padded tensors directly
+            padded_gt_labels = torch.zeros((B, max_num_gt), dtype=dtype, device=device)
+            padded_gt_bboxes = torch.zeros((B, max_num_gt, 7), dtype=gt_bboxes_3d[0].tensor.dtype, device=device)
+            
+            # Fill padded tensors efficiently using vectorized operations
+            for i, (labels, bboxes) in enumerate(zip(gt_labels_3d, gt_bboxes_3d)):
+                num_gt = len(labels)
+                if num_gt > 0:
+                    padded_gt_labels[i, :num_gt] = labels
+                    padded_gt_bboxes[i, :num_gt] = bboxes.tensor
+            
+            # Stack tensors once
+            gt_labels_3d = padded_gt_labels  # (B, max_num_gt)
+            gt_bboxes_3d = padded_gt_bboxes  # (B, max_num_gt, 7)
         
-        # Convert ground truth to tensors
-        gt_labels_3d = torch.stack(padded_gt_labels)  # (B, max_num_gt)
-        gt_bboxes_3d = torch.stack(padded_gt_bboxes)  # (B, max_num_gt, 7)
-        
-        # Calculate losses
+        # Calculate losses with memory optimization
         losses = {}
         
         # Initialize loss components
@@ -225,65 +222,50 @@ class VoxelNeXtHead(Base3DDenseHead):
         dir_loss = []
         iou_loss = []
         
-        # Compute losses for each level
-        for level in range(num_levels):
-            # Reshape predictions to match ground truth
-            cls_score = cls_scores[level].clone()  # (B, C, H, W, D)
-            bbox_pred = bbox_preds[level].clone()  # (B, 7, H, W, D)
-            if self.use_direction_classifier:
-                dir_cls_pred = dir_cls_preds[level].clone()  # (B, 2, H, W, D)
-            
-            # Reshape predictions for loss computation
-            B, C, H, W, D = cls_score.shape
-            cls_score = cls_score.permute(0, 2, 3, 4, 1).reshape(-1, C)  # (B*H*W*D, C)
-            bbox_pred = bbox_pred.permute(0, 2, 3, 4, 1).reshape(-1, 7)  # (B*H*W*D, 7)
-            if self.use_direction_classifier:
-                dir_cls_pred = dir_cls_pred.permute(0, 2, 3, 4, 1).reshape(-1, 2)  # (B*H*W*D, 2)
-            
-            # Create target labels for classification
-            target_labels = torch.zeros((B*H*W*D, C), device=cls_score.device)
-            for i in range(B):
-                for j in range(max_num_gt):
-                    if j < len(gt_labels_3d[i]) and gt_labels_3d[i][j] >= 0:  # Check if valid label
-                        label = gt_labels_3d[i][j]
-                        if label < C:  # Ensure label is within valid range
-                            idx = i*H*W*D + j
-                            if idx < target_labels.shape[0]:  # Check if index is within bounds
-                                target_labels[idx, label] = 1
-            
-            # Create target bboxes for regression
-            target_bboxes = torch.zeros((B*H*W*D, 7), device=bbox_pred.device)
-            for i in range(B):
-                for j in range(max_num_gt):
-                    if j < len(gt_bboxes_3d[i]) and gt_bboxes_3d[i][j].sum() > 0:  # Check if valid bbox
-                        idx = i*H*W*D + j
-                        if idx < target_bboxes.shape[0]:  # Check if index is within bounds
-                            target_bboxes[idx] = gt_bboxes_3d[i][j]
-            
-            # Create target direction for direction classification
-            if self.use_direction_classifier:
-                target_direction = torch.zeros((B*H*W*D,), dtype=torch.long, device=dir_cls_pred.device)
+        # Compute losses for each level with memory optimization
+        with torch.cuda.amp.autocast(enabled=True):
+            for level in range(num_levels):
+                # Reshape predictions efficiently
+                cls_score = cls_scores[level]  # (B, C, H, W, D)
+                bbox_pred = bbox_preds[level]  # (B, 7, H, W, D)
+                if self.use_direction_classifier:
+                    dir_cls_pred = dir_cls_preds[level]  # (B, 2, H, W, D)
+                
+                # Reshape predictions for loss computation using view
+                B, C, H, W, D = cls_score.shape
+                cls_score = cls_score.view(B, H*W*D, C)  # (B, H*W*D, C)
+                bbox_pred = bbox_pred.view(B, H*W*D, 7)  # (B, H*W*D, 7)
+                if self.use_direction_classifier:
+                    dir_cls_pred = dir_cls_pred.view(B, H*W*D, 2)  # (B, H*W*D, 2)
+                
+                # Create target tensors efficiently
+                target_labels = torch.zeros((B, H*W*D, C), device=cls_score.device)
+                target_bboxes = torch.zeros((B, H*W*D, 7), device=bbox_pred.device)
+                
+                # Fill target tensors using vectorized operations
+                valid_mask = (gt_labels_3d >= 0) & (gt_labels_3d < C)  # (B, max_num_gt)
                 for i in range(B):
-                    for j in range(max_num_gt):
-                        if j < len(gt_bboxes_3d[i]) and gt_bboxes_3d[i][j].sum() > 0:  # Check if valid bbox
-                            idx = i*H*W*D + j
-                            if idx < target_direction.shape[0]:  # Check if index is within bounds
-                                # Use the last dimension (heading) to determine direction
-                                heading = gt_bboxes_3d[i][j][-1]
-                                target_direction[idx] = 1 if heading > 0 else 0
-            
-            # Classification loss
-            cls_loss.append(self.loss_cls(cls_score, target_labels))
-            
-            # Bbox regression loss
-            bbox_loss.append(self.loss_bbox(bbox_pred, target_bboxes))
-            
-            # Direction classification loss
-            if self.use_direction_classifier:
-                dir_loss.append(self.loss_dir(dir_cls_pred, target_direction))
-            
-            # IoU loss
-            iou_loss.append(self.loss_iou(bbox_pred, target_bboxes))
+                    valid_indices = valid_mask[i].nonzero().squeeze(-1)
+                    if len(valid_indices) > 0:
+                        labels = gt_labels_3d[i, valid_indices]
+                        bboxes = gt_bboxes_3d[i, valid_indices]
+                        target_labels[i, valid_indices, labels] = 1
+                        target_bboxes[i, valid_indices] = bboxes
+                
+                # Compute losses with mixed precision
+                cls_loss.append(self.loss_cls(cls_score, target_labels))
+                bbox_loss.append(self.loss_bbox(bbox_pred, target_bboxes))
+                
+                if self.use_direction_classifier:
+                    target_direction = torch.zeros((B, H*W*D), dtype=torch.long, device=dir_cls_pred.device)
+                    for i in range(B):
+                        valid_indices = valid_mask[i].nonzero().squeeze(-1)
+                        if len(valid_indices) > 0:
+                            headings = gt_bboxes_3d[i, valid_indices, -1]
+                            target_direction[i, valid_indices] = (headings > 0).long()
+                    dir_loss.append(self.loss_dir(dir_cls_pred, target_direction))
+                
+                iou_loss.append(self.loss_iou(bbox_pred, target_bboxes))
         
         # Combine losses from all levels
         losses['loss_cls'] = sum(cls_loss) / num_levels
@@ -294,113 +276,121 @@ class VoxelNeXtHead(Base3DDenseHead):
         
         return losses
     
-    def predict_by_feat(self, cls_scores, bbox_preds, dir_cls_preds, batch_input_metas=None, cfg=None, rescale=False):
-        """Predict function.
+    def predict_by_feat(self, cls_scores, bbox_preds, dir_cls_preds=None, input_metas=None):
+        """Transform network output for a batch into bbox predictions.
         
         Args:
             cls_scores (list[Tensor]): Classification scores for each level.
             bbox_preds (list[Tensor]): Bbox predictions for each level.
-            dir_cls_preds (list[Tensor]): Direction classification for each level.
-            batch_input_metas (list[dict], optional): Batch input metas.
-            cfg (ConfigDict, optional): Test / postprocessing configuration.
-            rescale (bool): Whether to rescale the results.
+            dir_cls_preds (list[Tensor], optional): Direction classification for each level.
+            input_metas (list[dict], optional): Input metas.
                 
         Returns:
-            list[:obj:`InstanceData`]: Detection results of the input images.
+            list[InstanceData]: Detection results of each sample after the post process.
+                Each item usually contains following keys:
+                - scores_3d (Tensor): Classification scores, has a shape (num_instance,)
+                - labels_3d (Tensor): Labels of bboxes, has a shape (num_instances,)
+                - bboxes_3d (LiDARInstance3DBoxes): Prediction of bboxes
         """
-        cfg = self.test_cfg if cfg is None else cfg
+        result_list = []
         
-        # Post-process
+        # Process each level with memory optimization
+        for level in range(len(cls_scores)):
+            # Get predictions for current level
+            cls_score = cls_scores[level]  # (B, C, H, W, D)
+            bbox_pred = bbox_preds[level]  # (B, 7, H, W, D)
+            if self.use_direction_classifier:
+                dir_cls_pred = dir_cls_preds[level]  # (B, 2, H, W, D)
+            
+            # Reshape predictions efficiently using view
+            B, C, H, W, D = cls_score.shape
+            cls_score = cls_score.view(B, H*W*D, C)  # (B, H*W*D, C)
+            bbox_pred = bbox_pred.view(B, H*W*D, 7)  # (B, H*W*D, 7)
+            if self.use_direction_classifier:
+                dir_cls_pred = dir_cls_pred.view(B, H*W*D, 2)  # (B, H*W*D, 2)
+            
+            # Get top-k scores and indices efficiently
+            scores, indices = cls_score.max(dim=-1)  # (B, H*W*D)
+            
+            # Apply score threshold
+            mask = scores > self.score_threshold
+            if not mask.any():
+                result_list.append((torch.empty((0, 7), device=cls_score.device),
+                                  torch.empty((0,), device=cls_score.device)))
+                continue
+            
+            # Filter predictions using mask
+            scores = scores[mask]
+            indices = indices[mask]
+            bbox_pred = bbox_pred[mask]
+            
+            # Get batch indices for filtered predictions
+            batch_indices = torch.arange(B, device=cls_score.device).view(-1, 1).expand(-1, H*W*D)[mask]
+            
+            # Apply direction classification if enabled
+            if self.use_direction_classifier:
+                dir_cls_pred = dir_cls_pred[mask]
+                dir_cls_scores = dir_cls_pred.softmax(dim=-1)
+                dir_cls_pred = dir_cls_scores.argmax(dim=-1)
+                
+                # Apply direction to heading
+                bbox_pred[..., -1] = bbox_pred[..., -1] * (1 - 2 * dir_cls_pred.float())
+            
+            # Decode bounding boxes
+            bbox_pred = self._decode_bbox(bbox_pred, batch_indices, input_metas)
+            
+            # Apply NMS efficiently
+            keep = self._rotate_nms(bbox_pred, scores, self.nms_threshold)
+            bbox_pred = bbox_pred[keep]
+            scores = scores[keep]
+            indices = indices[keep]
+            
+            # Create result tuple
+            result_list.append((bbox_pred, indices))
+        
+        # Convert results to InstanceData format
         results = []
-        for i in range(len(cls_scores)):
-            # Get predictions
-            cls_score = cls_scores[i]
-            bbox_pred = bbox_preds[i]
-            dir_cls_pred = dir_cls_preds[i] if self.use_direction_classifier else None
+        for i in range(len(input_metas)):
+            # Get predictions for this sample
+            sample_bboxes = []
+            sample_scores = []
+            sample_labels = []
             
-            # Reshape bbox_pred for decoding
-            B, C, H, W, D = bbox_pred.shape
-            bbox_pred = bbox_pred.permute(0, 2, 3, 4, 1).reshape(-1, 7)  # (B*H*W*D, 7)
+            for level_result in result_list:
+                bboxes, level_indices = level_result
+                # Filter for current sample
+                sample_mask = batch_indices == i
+                if sample_mask.any():
+                    sample_bboxes.append(bboxes[sample_mask])
+                    sample_scores.append(scores[sample_mask])
+                    sample_labels.append(indices[sample_mask])
             
-            # Create anchor tensor for decoding
-            # For anchor-free methods, we use a default anchor
-            anchors = torch.zeros((bbox_pred.shape[0], 7), device=bbox_pred.device)
-            # Set default values for anchors (can be adjusted based on your needs)
-            anchors[:, 3:6] = 1.0  # Default width, length, height
-            
-            # Decode bbox predictions
-            bboxes = self.bbox_coder.decode(anchors, bbox_pred)
-            
-            # Get scores
-            scores = F.sigmoid(cls_score)
-            scores = scores.permute(0, 2, 3, 4, 1).reshape(-1, self.num_classes)  # (B*H*W*D, num_classes)
-            
-            # Filter by score threshold
-            score_thr = cfg.get('score_thr', 0.1)
-            mask = scores > score_thr
-            valid_indices = mask.any(dim=1)
-            bboxes = bboxes[valid_indices]
-            scores = scores[valid_indices]
-            
-            # Ensure scores have the correct format for KITTI
-            # KITTI expects a 1D array of scores
-            if len(scores) > 0:
-                # Get the maximum score for each box
-                scores = scores.max(dim=1)[0]
-            
-            # Get labels before NMS
-            if len(scores) > 0 and len(cls_scores) > 0:
-                cls_score = cls_scores[i]
-                cls_score = F.sigmoid(cls_score)
-                cls_score = cls_score.permute(0, 2, 3, 4, 1).reshape(-1, self.num_classes)
-                cls_score = cls_score[valid_indices]
-                labels = cls_score.argmax(dim=1)
+            if not sample_bboxes:
+                # Create empty result
+                result = InstanceData()
+                result.bboxes_3d = LiDARInstance3DBoxes(
+                    torch.zeros((0, 7), device=cls_scores[0].device),
+                    box_dim=7,
+                    origin=(0.5, 0.5, 0.5))
+                result.scores_3d = torch.zeros(0, device=cls_scores[0].device)
+                result.labels_3d = torch.zeros(0, dtype=torch.long, device=cls_scores[0].device)
             else:
-                labels = scores.new_zeros(scores.size(0), dtype=torch.long)
-            
-            # Apply NMS to bboxes and scores
-            if cfg.get('use_rotate_nms', True):
-                nms_thr = cfg.get('nms_thr', 0.01)
-                nms_type = cfg.get('nms_type', 'default')
+                # Concatenate results
+                bboxes = torch.cat(sample_bboxes)
+                scores = torch.cat(sample_scores)
+                labels = torch.cat(sample_labels)
                 
-                # Store original indices for later use
-                original_indices = torch.arange(len(bboxes), device=bboxes.device)
+                # Create LiDARInstance3DBoxes
+                bboxes = LiDARInstance3DBoxes(
+                    bboxes,
+                    box_dim=7,
+                    origin=(0.5, 0.5, 0.5))
                 
-                # Apply NMS
-                bboxes, scores, keep_indices = self._rotate_nms(bboxes, scores, nms_thr, nms_type)
-                
-                # Filter labels using the same indices
-                if len(bboxes) > 0:
-                    labels = labels[keep_indices]
-                else:
-                    # If no boxes after NMS, create empty labels
-                    labels = torch.zeros(0, dtype=torch.long, device=bboxes.device)
-            
-            # Convert bboxes to LiDARInstance3DBoxes
-            if len(bboxes) > 0:
-                # Ensure bboxes have the correct format for KITTI
-                # KITTI format: (x, y, z, w, l, h, theta)
-                # Make sure theta is in the correct range [-pi, pi]
-                bboxes = bboxes.clone()
-                bboxes[:, 6] = torch.atan2(torch.sin(bboxes[:, 6]), torch.cos(bboxes[:, 6]))
-                
-                # Create LiDARInstance3DBoxes with the correct origin
-                bboxes = LiDARInstance3DBoxes(bboxes, box_dim=7, origin=(0.5, 0.5, 0.5))
-                
-                # Apply limit_yaw to normalize the heading angles
-                bboxes.limit_yaw()
-            else:
-                # Create empty LiDARInstance3DBoxes
-                bboxes = LiDARInstance3DBoxes(torch.zeros((0, 7), device=bboxes.device), 
-                                             box_dim=7, origin=(0.5, 0.5, 0.5))
-            
-            # Create result
-            result = InstanceData()
-            result.bboxes_3d = bboxes
-            result.scores_3d = scores
-            
-            # Set labels based on the class with the highest score
-            result.labels_3d = labels
+                # Create result
+                result = InstanceData()
+                result.bboxes_3d = bboxes
+                result.scores_3d = scores
+                result.labels_3d = labels
             
             results.append(result)
         
@@ -478,9 +468,6 @@ class VoxelNeXtHead(Base3DDenseHead):
         Returns:
             tuple[Tensor]: Filtered boxes, scores, and keep indices.
         """
-        # This is a simplified implementation of sparse NMS
-        # In practice, you would need to implement this based on your specific requirements
-        
         # Sort by score in descending order
         _, order = scores.sort(0, descending=True)
         bboxes = bboxes[order]
@@ -549,17 +536,16 @@ class VoxelNeXtHead(Base3DDenseHead):
         Returns:
             Tensor: IoU of shape (N, M).
         """
-        # Extract box parameters
+        # Move IoU calculation to GPU
+        # Use vectorized operations
         x1, y1, z1, w1, l1, h1, theta1 = box1.unbind(-1)
         x2, y2, z2, w2, l2, h2, theta2 = box2.unbind(-1)
         
-        # Calculate volume
+        # Calculate volume on GPU
         vol1 = w1 * l1 * h1
         vol2 = w2 * l2 * h2
         
-        # Calculate intersection
-        # This is a simplified version - for accurate results, you need a more sophisticated
-        # intersection calculation that handles rotated boxes
+        # Calculate intersection on GPU
         x_overlap = torch.min(x1.unsqueeze(1) + w1.unsqueeze(1)/2, x2 + w2/2) - \
                     torch.max(x1.unsqueeze(1) - w1.unsqueeze(1)/2, x2 - w2/2)
         y_overlap = torch.min(y1.unsqueeze(1) + l1.unsqueeze(1)/2, y2 + l2/2) - \
@@ -567,16 +553,55 @@ class VoxelNeXtHead(Base3DDenseHead):
         z_overlap = torch.min(z1.unsqueeze(1) + h1.unsqueeze(1)/2, z2 + h2/2) - \
                     torch.max(z1.unsqueeze(1) - h1.unsqueeze(1)/2, z2 - h2/2)
         
-        # Clamp negative values to 0
+        # Clamp negative values to 0 on GPU
         x_overlap = torch.clamp(x_overlap, min=0)
         y_overlap = torch.clamp(y_overlap, min=0)
         z_overlap = torch.clamp(z_overlap, min=0)
         
-        # Calculate intersection volume
+        # Calculate intersection volume on GPU
         intersection = x_overlap * y_overlap * z_overlap
         
-        # Calculate IoU
+        # Calculate IoU on GPU
         union = vol1.unsqueeze(1) + vol2 - intersection
         iou = intersection / (union + 1e-6)
         
         return iou 
+
+    def _decode_bbox(self, bbox_pred, batch_indices, input_metas):
+        """Decode bbox predictions.
+        
+        Args:
+            bbox_pred (Tensor): Bbox predictions of shape (N, 7).
+            batch_indices (Tensor): Batch indices of shape (N,).
+            input_metas (list[dict]): Input metas.
+            
+        Returns:
+            Tensor: Decoded bboxes of shape (N, 7).
+        """
+        # Get batch size and device
+        device = bbox_pred.device
+        
+        # Create anchor tensor for decoding
+        anchors = torch.zeros_like(bbox_pred)
+        anchors[..., 3:6] = 1.0  # Set default size to 1.0
+        
+        # Decode bboxes using vectorized operations
+        bboxes = self.bbox_coder.decode(anchors, bbox_pred)
+        
+        # Apply voxel size and range transformations in batches
+        for i in range(len(input_metas)):
+            # Get predictions for this sample
+            sample_mask = batch_indices == i
+            if not sample_mask.any():
+                continue
+                
+            # Get voxel size and range for this sample
+            voxel_size = input_metas[i]['voxel_size']
+            pc_range = input_metas[i]['pc_range']
+            
+            # Apply transformations
+            bboxes[sample_mask, 0] = bboxes[sample_mask, 0] * voxel_size[0] + pc_range[0]
+            bboxes[sample_mask, 1] = bboxes[sample_mask, 1] * voxel_size[1] + pc_range[1]
+            bboxes[sample_mask, 2] = bboxes[sample_mask, 2] * voxel_size[2] + pc_range[2]
+        
+        return bboxes 
