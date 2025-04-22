@@ -257,12 +257,21 @@ class VoxelNeXtHead(Base3DDenseHead):
                 bbox_loss.append(self.loss_bbox(bbox_pred, target_bboxes))
                 
                 if self.use_direction_classifier:
+                    # Reshape direction predictions for loss computation
+                    dir_cls_pred = dir_cls_pred.reshape(-1, 2)  # (B*H*W*D, 2)
+                    
+                    # Create target direction tensor
                     target_direction = torch.zeros((B, H*W*D), dtype=torch.long, device=dir_cls_pred.device)
                     for i in range(B):
                         valid_indices = valid_mask[i].nonzero().squeeze(-1)
                         if len(valid_indices) > 0:
                             headings = gt_bboxes_3d[i, valid_indices, -1]
                             target_direction[i, valid_indices] = (headings > 0).long()
+                    
+                    # Reshape target direction for loss computation
+                    target_direction = target_direction.reshape(-1)  # (B*H*W*D,)
+                    
+                    # Compute direction loss
                     dir_loss.append(self.loss_dir(dir_cls_pred, target_direction))
                 
                 iou_loss.append(self.loss_iou(bbox_pred, target_bboxes))
