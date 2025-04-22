@@ -140,6 +140,7 @@ model = dict(
             max_num=50)))
 
 # dataset settings
+# dataset settings
 dataset_type = 'KittiDataset'
 data_root = 'data/kitti/'
 class_names = ['Pedestrian', 'Cyclist', 'Car']
@@ -225,7 +226,7 @@ test_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file='kitti_infos_train.pkl',
+        ann_file='kitti_infos_val.pkl',
         data_prefix=dict(pts='training/velodyne_reduced', img='training/image_2'),
         pipeline=test_pipeline,
         modality=input_modality,
@@ -242,7 +243,7 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file='kitti_infos_train.pkl',
+        ann_file='kitti_infos_val.pkl',
         data_prefix=dict(pts='training/velodyne_reduced', img='training/image_2'),
         pipeline=test_pipeline,
         modality=input_modality,
@@ -252,10 +253,39 @@ val_dataloader = dict(
 
 val_evaluator = dict(
     type='KittiMetric',
-    ann_file=data_root + 'kitti_infos_train.pkl',
+    ann_file=data_root + 'kitti_infos_val.pkl',
     metric='bbox',
     backend_args=backend_args)
 test_evaluator = val_evaluator
 
+
+# optimizer
+optim_wrapper = dict(
+    type='OptimWrapper',
+    optimizer=dict(type='AdamW', lr=0.001, weight_decay=0.01),
+    clip_grad=dict(max_norm=35, norm_type=2))
+
+# learning policy
+param_scheduler = [
+    dict(
+        type='LinearLR',
+        start_factor=0.001,
+        by_epoch=False,
+        begin=0,
+        end=1000),
+    dict(
+        type='MultiStepLR',
+        begin=0,
+        end=24,
+        by_epoch=True,
+        milestones=[20, 23],
+        gamma=0.1)
+]
+
+# training schedule
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=5, val_interval=1)
+val_cfg = dict(type='ValLoop')
+test_cfg = dict(type='TestLoop')
+
 # Default setting for scaling LR automatically
-auto_scale_lr = dict(base_batch_size=16) 
+auto_scale_lr = dict(base_batch_size=16)
