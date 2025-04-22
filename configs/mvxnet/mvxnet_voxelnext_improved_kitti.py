@@ -156,8 +156,10 @@ train_pipeline = [
         backend_args=backend_args),
     dict(type='LoadImageFromFile', backend_args=backend_args),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
+    #dict(
+    #    type='RandomResize', scale=[(640, 192), (2560, 768)], keep_ratio=True),
     dict(
-        type='RandomResize', scale=[(640, 192), (2560, 768)], keep_ratio=True),
+        type='RandomResize', scale=[(320, 96), (1280, 384)], keep_ratio=True),
     dict(
         type='GlobalRotScaleTrans',
         rot_range=[-0.78539816, 0.78539816],
@@ -188,6 +190,7 @@ test_pipeline = [
         pts_scale_ratio=1,
         flip=False,
         transforms=[
+            # Temporary solution, fix this after refactor the augtest
             dict(type='Resize', scale=0, keep_ratio=True),
             dict(
                 type='GlobalRotScaleTrans',
@@ -200,64 +203,66 @@ test_pipeline = [
         ]),
     dict(type='Pack3DDetInputs', keys=['points', 'img'])
 ]
-
+modality = dict(use_lidar=True, use_camera=True)
 train_dataloader = dict(
     batch_size=2,
-    num_workers=4,
-    persistent_workers=True,
+    num_workers=2,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
-        type=dataset_type,
-        data_root=data_root,
-        ann_file='kitti_infos_train.pkl',
-        data_prefix=dict(pts='training/velodyne_reduced', img='training/image_2'),
-        pipeline=train_pipeline,
-        modality=input_modality,
-        metainfo=metainfo,
-        test_mode=False,
-        backend_args=backend_args))
-
-test_dataloader = dict(
-    batch_size=1,
-    num_workers=4,
-    persistent_workers=True,
-    drop_last=False,
-    sampler=dict(type='DefaultSampler', shuffle=False),
-    dataset=dict(
-        type=dataset_type,
-        data_root=data_root,
-        ann_file='kitti_infos_val.pkl',
-        data_prefix=dict(pts='training/velodyne_reduced', img='training/image_2'),
-        pipeline=test_pipeline,
-        modality=input_modality,
-        metainfo=metainfo,
-        test_mode=True,
-        backend_args=backend_args))
+        type='RepeatDataset',
+        times=2,
+        dataset=dict(
+            type=dataset_type,
+            data_root=data_root,
+            modality=modality,
+            ann_file='kitti_infos_train.pkl',
+            data_prefix=dict(
+                pts='training/velodyne_reduced', img='training/image_2'),
+            pipeline=train_pipeline,
+            filter_empty_gt=False,
+            metainfo=metainfo,
+            # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
+            # and box_type_3d='Depth' in sunrgbd and scannet dataset.
+            box_type_3d='LiDAR',
+            backend_args=backend_args)))
 
 val_dataloader = dict(
     batch_size=1,
-    num_workers=4,
-    persistent_workers=True,
-    drop_last=False,
+    num_workers=1,
+    sampler=dict(type='DefaultSampler', shuffle=False),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        modality=modality,
+        ann_file='kitti_infos_val.pkl',
+        data_prefix=dict(
+            pts='training/velodyne_reduced', img='training/image_2'),
+        pipeline=test_pipeline,
+        metainfo=metainfo,
+        test_mode=True,
+        box_type_3d='LiDAR',
+        backend_args=backend_args))
+test_dataloader = dict(
+    batch_size=1,
+    num_workers=1,
     sampler=dict(type='DefaultSampler', shuffle=False),
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
         ann_file='kitti_infos_val.pkl',
-        data_prefix=dict(pts='training/velodyne_reduced', img='training/image_2'),
+        modality=modality,
+        data_prefix=dict(
+            pts='training/velodyne_reduced', img='training/image_2'),
         pipeline=test_pipeline,
-        modality=input_modality,
         metainfo=metainfo,
         test_mode=True,
+        box_type_3d='LiDAR',
         backend_args=backend_args))
 
-val_evaluator = dict(
-    type='KittiMetric',
-    ann_file=data_root + 'kitti_infos_val.pkl',
-    metric='bbox',
-    backend_args=backend_args)
-test_evaluator = val_evaluator
-
+# optim_wrapper = dict(
+#     optimizer=dict(weight_decay=0.01),
+#     clip_grad=dict(max_norm=35, norm_type=2),
+# )
 
 # optimizer
 optim_wrapper = dict(
@@ -282,10 +287,19 @@ param_scheduler = [
         gamma=0.1)
 ]
 
+val_evaluator = dict(
+    type='KittiMetric', ann_file='data/kitti/kitti_infos_val.pkl')
+test_evaluator = val_evaluator
+
+
 # training schedule
 train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=5, val_interval=1)
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
+
+vis_backends = [dict(type='LocalVisBackend')]
+visualizer = dict(
+    type='Det3DLocalVisualizer', vis_backends=vis_backends, name='visualizer')
 
 # Default setting for scaling LR automatically
 auto_scale_lr = dict(base_batch_size=16)
