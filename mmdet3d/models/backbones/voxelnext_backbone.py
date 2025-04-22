@@ -27,6 +27,7 @@ class VoxelNeXtBlock(BaseModule):
                 padding=1,
                 norm_cfg=dict(type='BN3d'),
                 act_cfg=dict(type='ReLU', inplace=False))
+            self.bn1 = nn.BatchNorm3d(out_channels)
             self.conv2 = SparseConvBlock(
                 out_channels,
                 out_channels,
@@ -34,6 +35,7 @@ class VoxelNeXtBlock(BaseModule):
                 padding=1,
                 norm_cfg=dict(type='BN3d'),
                 act_cfg=dict(type='ReLU', inplace=False))
+            self.bn2 = nn.BatchNorm3d(out_channels)
             
             if stride != 1 or in_channels != out_channels:
                 self.downsample = SparseConvBlock(
@@ -43,8 +45,10 @@ class VoxelNeXtBlock(BaseModule):
                     stride=stride,
                     norm_cfg=dict(type='BN3d'),
                     act_cfg=None)
+                self.bn_downsample = nn.BatchNorm3d(out_channels)
             else:
                 self.downsample = None
+                self.bn_downsample = None
         else:
             # Fallback to standard ConvModule
             self.conv1 = ConvModule(
@@ -82,13 +86,23 @@ class VoxelNeXtBlock(BaseModule):
         
         if self.with_cp and x.requires_grad:
             out = torch.utils.checkpoint.checkpoint(self.conv1, x)
+            out = self.bn1(out)
+            out = F.relu(out, inplace=False)
             out = torch.utils.checkpoint.checkpoint(self.conv2, out)
+            out = self.bn2(out)
+            out = F.relu(out, inplace=False)
         else:
             out = self.conv1(x)
+            out = self.bn1(out)
+            out = F.relu(out, inplace=False)
             out = self.conv2(out)
+            out = self.bn2(out)
+            out = F.relu(out, inplace=False)
         
         if self.downsample is not None:
             identity = self.downsample(x)
+            if self.bn_downsample is not None:
+                identity = self.bn_downsample(identity)
         elif self.stride != 1:
             # Handle stride mismatch in identity path
             identity = F.interpolate(
@@ -133,6 +147,7 @@ class VoxelNeXtBackbone(BaseModule):
                 padding=1,
                 norm_cfg=dict(type='BN3d'),
                 act_cfg=dict(type='ReLU', inplace=False))
+            self.bn1 = nn.BatchNorm3d(out_channels[0])
         else:
             self.conv1 = ConvModule(
                 in_channels,
@@ -168,6 +183,7 @@ class VoxelNeXtBackbone(BaseModule):
                 padding=1,
                 norm_cfg=dict(type='BN3d'),
                 act_cfg=dict(type='ReLU', inplace=False))
+            self.bn2 = nn.BatchNorm3d(out_channels[-1])
         else:
             self.conv2 = ConvModule(
                 out_channels[-1],
@@ -181,6 +197,8 @@ class VoxelNeXtBackbone(BaseModule):
     def forward(self, x):
         # Initial feature extraction
         x = self.conv1(x)
+        x = self.bn1(x)
+        x = F.relu(x, inplace=False)
         
         # Backbone feature extraction
         features = []
@@ -190,6 +208,8 @@ class VoxelNeXtBackbone(BaseModule):
         
         # Feature refinement
         x = self.conv2(x)
+        x = self.bn2(x)
+        x = F.relu(x, inplace=False)
         features.append(x.clone())  # Create a copy to avoid in-place operations
         
         return features 
