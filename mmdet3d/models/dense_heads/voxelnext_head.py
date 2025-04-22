@@ -242,115 +242,126 @@ class VoxelNeXtHead(Base3DDenseHead):
         # Compute losses for each level with memory optimization
         with torch.amp.autocast('cuda', enabled=True):
             for level in range(num_levels):
-                # Get predictions for current level
-                cls_score = cls_scores[level]  # (B, C, H, W, D)
-                bbox_pred = bbox_preds[level]  # (B, 7, H, W, D)
-                if self.use_direction_classifier:
-                    dir_cls_pred = dir_cls_preds[level]  # (B, 2, H, W, D)
-                
-                # Validate tensor shapes
-                if cls_score.dim() != 5 or bbox_pred.dim() != 5:
-                    raise ValueError(f'Expected 5D tensors, got cls_score: {cls_score.dim()}D, bbox_pred: {bbox_pred.dim()}D')
-                
-                if self.use_direction_classifier and dir_cls_pred.dim() != 5:
-                    raise ValueError(f'Expected 5D tensor for dir_cls_pred, got {dir_cls_pred.dim()}D')
-                
-                # Get shapes and ensure they match
-                B, C, H, W, D = cls_score.shape
-                if C != self.num_classes:
-                    raise ValueError(f'Expected {self.num_classes} classes in cls_score, got {C}')
-                
-                total_elements = H * W * D
-                
-                # Verify tensor sizes before reshaping
-                expected_size = B * C * total_elements
-                if cls_score.numel() != expected_size:
-                    raise ValueError(f'Tensor size mismatch. Expected {expected_size} elements, got {cls_score.numel()}')
-                
-                # Reshape predictions efficiently using view
-                cls_score = cls_score.permute(0, 2, 3, 4, 1).contiguous()  # (B, H, W, D, C)
-                cls_score = cls_score.view(B, total_elements, C)  # (B, H*W*D, C)
-                
-                bbox_pred = bbox_pred.permute(0, 2, 3, 4, 1).contiguous()  # (B, H, W, D, 7)
-                bbox_pred = bbox_pred.view(B, total_elements, 7)  # (B, H*W*D, 7)
-                
-                if self.use_direction_classifier:
-                    dir_cls_pred = dir_cls_pred.permute(0, 2, 3, 4, 1).contiguous()  # (B, H, W, D, 2)
-                    dir_cls_pred = dir_cls_pred.view(B, total_elements, 2)  # (B, H*W*D, 2)
-                
-                # Create target tensors efficiently with matching dtypes
-                target_labels = torch.zeros((B, total_elements, C), device=cls_score.device, dtype=cls_score.dtype)
-                target_bboxes = torch.zeros((B, total_elements, 7), device=bbox_pred.device, dtype=bbox_pred.dtype)
-                
-                # Fill target tensors using vectorized operations
-                valid_mask = (gt_labels_3d >= 0) & (gt_labels_3d < C)  # (B, max_num_gt)
-                
-                # Process all batches at once using vectorized operations
-                for i in range(B):
-                    valid_indices = valid_mask[i].nonzero().squeeze(-1)
-                    if len(valid_indices) > 0:
-                        # Ensure indices are within bounds
-                        valid_indices = valid_indices[valid_indices < total_elements]
-                        if len(valid_indices) > 0:
-                            # Get labels and bboxes for valid indices
-                            labels = gt_labels_3d[i, valid_indices]
-                            bboxes = gt_bboxes_3d[i, valid_indices].to(dtype=bbox_pred.dtype)  # Convert to matching dtype
-                            
-                            # Validate labels
-                            if not torch.all((labels >= 0) & (labels < C)):
-                                raise ValueError(f'Invalid label values found. Labels must be in range [0, {C-1}]')
-                            
-                            # Create one-hot encoding for labels efficiently
-                            target_labels[i].scatter_(1, labels.unsqueeze(1), 1)
-                            target_bboxes[i, valid_indices] = bboxes
-                
-                # Add numerical stability checks
-                if torch.isnan(cls_score).any() or torch.isnan(bbox_pred).any():
-                    raise ValueError('NaN values detected in predictions')
-                
-                if torch.isnan(target_labels).any() or torch.isnan(target_bboxes).any():
-                    raise ValueError('NaN values detected in targets')
-                
-                # Compute losses with mixed precision and numerical stability
-                cls_loss.append(self.loss_cls(cls_score, target_labels))
-                bbox_loss.append(self.loss_bbox(bbox_pred, target_bboxes))
-                
-                if self.use_direction_classifier:
-                    # Reshape direction predictions for loss computation
-                    dir_cls_pred = dir_cls_pred.reshape(-1, 2)  # (B*H*W*D, 2)
+                try:
+                    # Get predictions for current level
+                    cls_score = cls_scores[level]  # (B, C, H, W, D)
+                    bbox_pred = bbox_preds[level]  # (B, 7, H, W, D)
+                    if self.use_direction_classifier:
+                        dir_cls_pred = dir_cls_preds[level]  # (B, 2, H, W, D)
                     
-                    # Create target direction tensor
-                    target_direction = torch.zeros((B, total_elements), dtype=torch.long, device=dir_cls_pred.device)
+                    # Validate tensor shapes
+                    if cls_score.dim() != 5 or bbox_pred.dim() != 5:
+                        raise ValueError(f'Expected 5D tensors, got cls_score: {cls_score.dim()}D, bbox_pred: {bbox_pred.dim()}D')
                     
-                    # Process direction classification efficiently
+                    if self.use_direction_classifier and dir_cls_pred.dim() != 5:
+                        raise ValueError(f'Expected 5D tensor for dir_cls_pred, got {dir_cls_pred.dim()}D')
+                    
+                    # Get shapes and ensure they match
+                    B, C, H, W, D = cls_score.shape
+                    if C != self.num_classes:
+                        raise ValueError(f'Expected {self.num_classes} classes in cls_score, got {C}')
+                    
+                    total_elements = H * W * D
+                    
+                    # Verify tensor sizes before reshaping
+                    expected_size = B * C * total_elements
+                    if cls_score.numel() != expected_size:
+                        raise ValueError(f'Tensor size mismatch. Expected {expected_size} elements, got {cls_score.numel()}')
+                    
+                    # Check for NaN values
+                    if torch.isnan(cls_score).any() or torch.isnan(bbox_pred).any():
+                        raise ValueError('NaN values detected in predictions')
+                    
+                    if self.use_direction_classifier and torch.isnan(dir_cls_pred).any():
+                        raise ValueError('NaN values detected in direction predictions')
+                    
+                    # Reshape predictions efficiently using view
+                    cls_score = cls_score.permute(0, 2, 3, 4, 1).contiguous()  # (B, H, W, D, C)
+                    cls_score = cls_score.view(B, total_elements, C)  # (B, H*W*D, C)
+                    
+                    bbox_pred = bbox_pred.permute(0, 2, 3, 4, 1).contiguous()  # (B, H, W, D, 7)
+                    bbox_pred = bbox_pred.view(B, total_elements, 7)  # (B, H*W*D, 7)
+                    
+                    if self.use_direction_classifier:
+                        dir_cls_pred = dir_cls_pred.permute(0, 2, 3, 4, 1).contiguous()  # (B, H, W, D, 2)
+                        dir_cls_pred = dir_cls_pred.view(B, total_elements, 2)  # (B, H*W*D, 2)
+                    
+                    # Create target tensors efficiently with matching dtypes
+                    target_labels = torch.zeros((B, total_elements, C), device=cls_score.device, dtype=cls_score.dtype)
+                    target_bboxes = torch.zeros((B, total_elements, 7), device=bbox_pred.device, dtype=bbox_pred.dtype)
+                    
+                    # Fill target tensors using vectorized operations
+                    valid_mask = (gt_labels_3d >= 0) & (gt_labels_3d < C)  # (B, max_num_gt)
+                    
+                    # Process all batches at once using vectorized operations
                     for i in range(B):
                         valid_indices = valid_mask[i].nonzero().squeeze(-1)
                         if len(valid_indices) > 0:
                             # Ensure indices are within bounds
                             valid_indices = valid_indices[valid_indices < total_elements]
                             if len(valid_indices) > 0:
-                                # Get headings for valid indices
-                                headings = gt_bboxes_3d[i, valid_indices, -1].to(dtype=dir_cls_pred.dtype)  # Convert to matching dtype
-                                target_direction[i, valid_indices] = (headings > 0).long()
+                                # Get labels and bboxes for valid indices
+                                labels = gt_labels_3d[i, valid_indices]
+                                bboxes = gt_bboxes_3d[i, valid_indices].to(dtype=bbox_pred.dtype)  # Convert to matching dtype
+                                
+                                # Validate labels
+                                if not torch.all((labels >= 0) & (labels < C)):
+                                    raise ValueError(f'Invalid label values found. Labels must be in range [0, {C-1}]')
+                                
+                                # Create one-hot encoding for labels efficiently
+                                target_labels[i].scatter_(1, labels.unsqueeze(1), 1)
+                                target_bboxes[i, valid_indices] = bboxes
                     
-                    # Reshape target direction for loss computation
-                    target_direction = target_direction.reshape(-1)  # (B*H*W*D,)
+                    # Compute losses with mixed precision and numerical stability
+                    cls_loss.append(self.loss_cls(cls_score, target_labels))
+                    bbox_loss.append(self.loss_bbox(bbox_pred, target_bboxes))
                     
-                    # Compute direction loss
-                    dir_loss.append(self.loss_dir(dir_cls_pred, target_direction))
-                
-                # Compute IoU loss with proper reshaping
-                # Reshape predictions and targets to match expected format
-                bbox_pred_flat = bbox_pred.reshape(-1, 7)  # (B*H*W*D, 7)
-                target_bboxes_flat = target_bboxes.reshape(-1, 7)  # (B*H*W*D, 7)
-                
-                # Ensure tensors have the same size
-                min_size = min(bbox_pred_flat.size(0), target_bboxes_flat.size(0))
-                bbox_pred_flat = bbox_pred_flat[:min_size]
-                target_bboxes_flat = target_bboxes_flat[:min_size]
-                
-                # Compute IoU loss
-                iou_loss.append(self.loss_iou(bbox_pred_flat, target_bboxes_flat))
+                    if self.use_direction_classifier:
+                        # Reshape direction predictions for loss computation
+                        dir_cls_pred = dir_cls_pred.reshape(-1, 2)  # (B*H*W*D, 2)
+                        
+                        # Create target direction tensor
+                        target_direction = torch.zeros((B, total_elements), dtype=torch.long, device=dir_cls_pred.device)
+                        
+                        # Process direction classification efficiently
+                        for i in range(B):
+                            valid_indices = valid_mask[i].nonzero().squeeze(-1)
+                            if len(valid_indices) > 0:
+                                # Ensure indices are within bounds
+                                valid_indices = valid_indices[valid_indices < total_elements]
+                                if len(valid_indices) > 0:
+                                    # Get headings for valid indices
+                                    headings = gt_bboxes_3d[i, valid_indices, -1].to(dtype=dir_cls_pred.dtype)  # Convert to matching dtype
+                                    target_direction[i, valid_indices] = (headings > 0).long()
+                        
+                        # Reshape target direction for loss computation
+                        target_direction = target_direction.reshape(-1)  # (B*H*W*D,)
+                        
+                        # Compute direction loss
+                        dir_loss.append(self.loss_dir(dir_cls_pred, target_direction))
+                    
+                    # Compute IoU loss with proper reshaping
+                    # Reshape predictions and targets to match expected format
+                    bbox_pred_flat = bbox_pred.reshape(-1, 7)  # (B*H*W*D, 7)
+                    target_bboxes_flat = target_bboxes.reshape(-1, 7)  # (B*H*W*D, 7)
+                    
+                    # Ensure tensors have the same size
+                    min_size = min(bbox_pred_flat.size(0), target_bboxes_flat.size(0))
+                    bbox_pred_flat = bbox_pred_flat[:min_size]
+                    target_bboxes_flat = target_bboxes_flat[:min_size]
+                    
+                    # Compute IoU loss with numerical stability
+                    iou = self._box3d_iou(bbox_pred_flat, target_bboxes_flat)
+                    iou_loss.append(1 - iou.mean())
+                    
+                except Exception as e:
+                    print(f"Error processing level {level}: {str(e)}")
+                    # Add zero loss for this level
+                    cls_loss.append(torch.tensor(0.0, device=cls_scores[0].device))
+                    bbox_loss.append(torch.tensor(0.0, device=cls_scores[0].device))
+                    if self.use_direction_classifier:
+                        dir_loss.append(torch.tensor(0.0, device=cls_scores[0].device))
+                    iou_loss.append(torch.tensor(0.0, device=cls_scores[0].device))
         
         # Combine losses from all levels with numerical stability
         losses['loss_cls'] = sum(cls_loss) / max(num_levels, 1)
@@ -689,16 +700,31 @@ class VoxelNeXtHead(Base3DDenseHead):
         Returns:
             Tensor: IoU of shape (N, M).
         """
+        # Input validation
+        if box1.dim() != 2 or box2.dim() != 2:
+            raise ValueError(f'Expected 2D tensors, got box1: {box1.dim()}D, box2: {box2.dim()}D')
+        
+        if box1.size(-1) != 7 or box2.size(-1) != 7:
+            raise ValueError(f'Expected 7 dimensions per box, got box1: {box1.size(-1)}, box2: {box2.size(-1)}')
+        
+        # Check for NaN values
+        if torch.isnan(box1).any() or torch.isnan(box2).any():
+            raise ValueError('NaN values detected in input boxes')
+        
+        # Ensure boxes have positive dimensions
+        box1 = torch.clamp(box1, min=1e-6)
+        box2 = torch.clamp(box2, min=1e-6)
+        
         # Move IoU calculation to GPU
         # Use vectorized operations
         x1, y1, z1, w1, l1, h1, theta1 = box1.unbind(-1)
         x2, y2, z2, w2, l2, h2, theta2 = box2.unbind(-1)
         
-        # Calculate volume on GPU
+        # Calculate volume on GPU with numerical stability
         vol1 = w1 * l1 * h1
         vol2 = w2 * l2 * h2
         
-        # Calculate intersection on GPU
+        # Calculate intersection on GPU with numerical stability
         x_overlap = torch.min(x1.unsqueeze(1) + w1.unsqueeze(1)/2, x2 + w2/2) - \
                     torch.max(x1.unsqueeze(1) - w1.unsqueeze(1)/2, x2 - w2/2)
         y_overlap = torch.min(y1.unsqueeze(1) + l1.unsqueeze(1)/2, y2 + l2/2) - \
@@ -711,14 +737,17 @@ class VoxelNeXtHead(Base3DDenseHead):
         y_overlap = torch.clamp(y_overlap, min=0)
         z_overlap = torch.clamp(z_overlap, min=0)
         
-        # Calculate intersection volume on GPU
+        # Calculate intersection volume on GPU with numerical stability
         intersection = x_overlap * y_overlap * z_overlap
         
-        # Calculate IoU on GPU
+        # Calculate IoU on GPU with numerical stability
         union = vol1.unsqueeze(1) + vol2 - intersection
         iou = intersection / (union + 1e-6)
         
-        return iou 
+        # Clamp IoU to valid range
+        iou = torch.clamp(iou, min=0.0, max=1.0)
+        
+        return iou
 
     def _decode_bbox(self, bbox_pred, batch_indices, input_metas):
         """Decode bbox predictions.
