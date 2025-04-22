@@ -377,7 +377,7 @@ class VoxelNeXtHead(Base3DDenseHead):
         
         return losses
     
-    def predict_by_feat(self, cls_scores, bbox_preds, dir_cls_preds=None, input_metas=None, batch_input_metas=None):
+    def predict_by_feat(self, cls_scores, bbox_preds, dir_cls_preds=None, input_metas=None, batch_input_metas=None, rescale=False, cfg=None, **kwargs):
         """Transform network output for a batch into bbox predictions.
         
         Args:
@@ -386,6 +386,9 @@ class VoxelNeXtHead(Base3DDenseHead):
             dir_cls_preds (list[Tensor], optional): Direction classification for each level.
             input_metas (list[dict], optional): Input metas.
             batch_input_metas (list[dict], optional): Batch input metas (for compatibility).
+            rescale (bool): Whether to rescale the predictions. Defaults to False.
+            cfg (ConfigDict, optional): Test / postprocessing configuration. Defaults to None.
+            **kwargs: Additional arguments passed to the base class.
                 
         Returns:
             list[InstanceData]: Detection results of each sample after the post process.
@@ -399,6 +402,9 @@ class VoxelNeXtHead(Base3DDenseHead):
             input_metas = batch_input_metas
         elif input_metas is None:
             input_metas = []
+            
+        # Use test_cfg if cfg is not provided
+        cfg = self.test_cfg if cfg is None else cfg
             
         result_list = []
         
@@ -490,6 +496,15 @@ class VoxelNeXtHead(Base3DDenseHead):
                 
                 # Decode bounding boxes
                 bbox_pred = self._decode_bbox(bbox_pred, batch_indices, input_metas)
+                
+                # Apply rescaling if needed
+                if rescale and input_metas:
+                    for i in range(len(input_metas)):
+                        scale_factor = input_metas[i].get('scale_factor', None)
+                        if scale_factor is not None:
+                            mask_i = batch_indices == i
+                            if mask_i.any():
+                                bbox_pred[mask_i, :3] = bbox_pred[mask_i, :3] * scale_factor
                 
                 # Apply NMS efficiently
                 keep = self._rotate_nms(bbox_pred, scores, self.nms_threshold)
