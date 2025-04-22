@@ -187,9 +187,33 @@ class VoxelNeXtHead(Base3DDenseHead):
         gt_labels_3d = [gt_instances_3d.labels_3d.clone() for gt_instances_3d in batch_gt_instances_3d]  # Create new tensors
         gt_bboxes_3d = [gt_instances_3d.bboxes_3d for gt_instances_3d in batch_gt_instances_3d]
         
+        # Find the maximum number of ground truth objects in any sample
+        max_num_gt = max([len(gt_labels) for gt_labels in gt_labels_3d])
+        
+        # Pad ground truth labels and boxes to the same size
+        padded_gt_labels = []
+        padded_gt_bboxes = []
+        
+        for i, (labels, bboxes) in enumerate(zip(gt_labels_3d, gt_bboxes_3d)):
+            num_gt = len(labels)
+            if num_gt == 0:
+                # If no ground truth, create empty tensors
+                padded_labels = torch.zeros(max_num_gt, dtype=labels.dtype, device=labels.device)
+                padded_bboxes = torch.zeros((max_num_gt, 7), dtype=bboxes.tensor.dtype, device=bboxes.tensor.device)
+            else:
+                # Pad with zeros to match the maximum number of ground truth objects
+                padded_labels = torch.zeros(max_num_gt, dtype=labels.dtype, device=labels.device)
+                padded_labels[:num_gt] = labels
+                
+                padded_bboxes = torch.zeros((max_num_gt, 7), dtype=bboxes.tensor.dtype, device=bboxes.tensor.device)
+                padded_bboxes[:num_gt] = bboxes.tensor
+            
+            padded_gt_labels.append(padded_labels)
+            padded_gt_bboxes.append(padded_bboxes)
+        
         # Convert ground truth to tensors
-        gt_labels_3d = torch.stack(gt_labels_3d)  # (B, num_gt)
-        gt_bboxes_3d = torch.stack([bbox.tensor.clone() for bbox in gt_bboxes_3d])  # (B, num_gt, 7)
+        gt_labels_3d = torch.stack(padded_gt_labels)  # (B, max_num_gt)
+        gt_bboxes_3d = torch.stack(padded_gt_bboxes)  # (B, max_num_gt, 7)
         
         # Calculate losses
         losses = {}
@@ -219,24 +243,27 @@ class VoxelNeXtHead(Base3DDenseHead):
             # Create target labels for classification
             target_labels = torch.zeros((B*H*W*D, C), device=cls_score.device)
             for i in range(B):
-                for j in range(len(gt_labels_3d[i])):
-                    label = gt_labels_3d[i][j]
-                    target_labels[i*H*W*D + j, label] = 1
+                for j in range(max_num_gt):
+                    if j < len(gt_labels_3d[i]) and gt_labels_3d[i][j] >= 0:  # Check if valid label
+                        label = gt_labels_3d[i][j]
+                        target_labels[i*H*W*D + j, label] = 1
             
             # Create target bboxes for regression
             target_bboxes = torch.zeros((B*H*W*D, 7), device=bbox_pred.device)
             for i in range(B):
-                for j in range(len(gt_bboxes_3d[i])):
-                    target_bboxes[i*H*W*D + j] = gt_bboxes_3d[i][j]
+                for j in range(max_num_gt):
+                    if j < len(gt_bboxes_3d[i]) and gt_bboxes_3d[i][j].sum() > 0:  # Check if valid bbox
+                        target_bboxes[i*H*W*D + j] = gt_bboxes_3d[i][j]
             
             # Create target direction for direction classification
             if self.use_direction_classifier:
                 target_direction = torch.zeros((B*H*W*D,), dtype=torch.long, device=dir_cls_pred.device)
                 for i in range(B):
-                    for j in range(len(gt_bboxes_3d[i])):
-                        # Use the last dimension (heading) to determine direction
-                        heading = gt_bboxes_3d[i][j][-1]
-                        target_direction[i*H*W*D + j] = 1 if heading > 0 else 0
+                    for j in range(max_num_gt):
+                        if j < len(gt_bboxes_3d[i]) and gt_bboxes_3d[i][j].sum() > 0:  # Check if valid bbox
+                            # Use the last dimension (heading) to determine direction
+                            heading = gt_bboxes_3d[i][j][-1]
+                            target_direction[i*H*W*D + j] = 1 if heading > 0 else 0
             
             # Classification loss
             cls_loss.append(self.loss_cls(cls_score, target_labels))
