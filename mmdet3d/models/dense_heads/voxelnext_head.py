@@ -59,7 +59,7 @@ class VoxelNeXtHead(Base3DDenseHead):
         # Initialize bbox coder properly
         self.bbox_coder = TASK_UTILS.build(bbox_coder)
         
-        # Build shared conv layers
+        # Build shared conv layers with additional batch normalization
         self.shared_conv = nn.Sequential(
             ConvModule(
                 in_channels,
@@ -69,6 +69,8 @@ class VoxelNeXtHead(Base3DDenseHead):
                 conv_cfg=dict(type='Conv3d'),
                 norm_cfg=dict(type='BN3d'),
                 act_cfg=dict(type='ReLU', inplace=False)),
+            nn.BatchNorm3d(feat_channels),
+            nn.ReLU(inplace=False),
             ConvModule(
                 feat_channels,
                 feat_channels,
@@ -76,17 +78,25 @@ class VoxelNeXtHead(Base3DDenseHead):
                 padding=1,
                 conv_cfg=dict(type='Conv3d'),
                 norm_cfg=dict(type='BN3d'),
-                act_cfg=dict(type='ReLU', inplace=False)))
+                act_cfg=dict(type='ReLU', inplace=False)),
+            nn.BatchNorm3d(feat_channels),
+            nn.ReLU(inplace=False))
         
-        # Classification head
-        self.conv_cls = nn.Conv3d(feat_channels, num_classes, 1)
+        # Classification head with batch normalization
+        self.conv_cls = nn.Sequential(
+            nn.Conv3d(feat_channels, num_classes, 1),
+            nn.BatchNorm3d(num_classes))
         
-        # Regression head (7 parameters: x, y, z, w, l, h, θ)
-        self.conv_reg = nn.Conv3d(feat_channels, 7, 1)
+        # Regression head with batch normalization
+        self.conv_reg = nn.Sequential(
+            nn.Conv3d(feat_channels, 7, 1),
+            nn.BatchNorm3d(7))
         
-        # Direction classifier
+        # Direction classifier with batch normalization
         if use_direction_classifier:
-            self.conv_dir_cls = nn.Conv3d(feat_channels, 2, 1)
+            self.conv_dir_cls = nn.Sequential(
+                nn.Conv3d(feat_channels, 2, 1),
+                nn.BatchNorm3d(2))
         
         # Loss functions
         loss_cls_copy = loss_cls.copy()
@@ -117,6 +127,9 @@ class VoxelNeXtHead(Base3DDenseHead):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out')
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm3d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
     
     def forward(self, x):
         """Forward function.
