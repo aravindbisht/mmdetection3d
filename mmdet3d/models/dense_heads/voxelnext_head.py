@@ -184,10 +184,27 @@ class VoxelNeXtHead(Base3DDenseHead):
         Returns:
             dict: A dictionary of loss components.
         """
+        # Input validation
+        if not isinstance(cls_scores, list) or not isinstance(bbox_preds, list):
+            raise TypeError('cls_scores and bbox_preds must be lists')
+        
+        if len(cls_scores) != len(bbox_preds):
+            raise ValueError(f'Number of levels in cls_scores ({len(cls_scores)}) and bbox_preds ({len(bbox_preds)}) must match')
+        
+        if self.use_direction_classifier:
+            if not isinstance(dir_cls_preds, list):
+                raise TypeError('dir_cls_preds must be a list when use_direction_classifier is True')
+            if len(dir_cls_preds) != len(cls_scores):
+                raise ValueError(f'Number of levels in dir_cls_preds ({len(dir_cls_preds)}) must match cls_scores ({len(cls_scores)})')
+        
         # Get ground truth with memory optimization
         with torch.no_grad():
             gt_labels_3d = [gt_instances_3d.labels_3d for gt_instances_3d in batch_gt_instances_3d]
             gt_bboxes_3d = [gt_instances_3d.bboxes_3d for gt_instances_3d in batch_gt_instances_3d]
+            
+            # Validate ground truth
+            if not gt_labels_3d or not gt_bboxes_3d:
+                raise ValueError('Empty ground truth labels or boxes')
             
             # Find the maximum number of ground truth objects in any sample
             max_num_gt = max([len(gt_labels) for gt_labels in gt_labels_3d])
@@ -231,8 +248,18 @@ class VoxelNeXtHead(Base3DDenseHead):
                 if self.use_direction_classifier:
                     dir_cls_pred = dir_cls_preds[level]  # (B, 2, H, W, D)
                 
+                # Validate tensor shapes
+                if cls_score.dim() != 5 or bbox_pred.dim() != 5:
+                    raise ValueError(f'Expected 5D tensors, got cls_score: {cls_score.dim()}D, bbox_pred: {bbox_pred.dim()}D')
+                
+                if self.use_direction_classifier and dir_cls_pred.dim() != 5:
+                    raise ValueError(f'Expected 5D tensor for dir_cls_pred, got {dir_cls_pred.dim()}D')
+                
                 # Get shapes and ensure they match
                 B, C, H, W, D = cls_score.shape
+                if C != self.num_classes:
+                    raise ValueError(f'Expected {self.num_classes} classes in cls_score, got {C}')
+                
                 total_elements = H * W * D
                 
                 # Verify tensor sizes before reshaping
@@ -251,7 +278,7 @@ class VoxelNeXtHead(Base3DDenseHead):
                     dir_cls_pred = dir_cls_pred.permute(0, 2, 3, 4, 1).contiguous()  # (B, H, W, D, 2)
                     dir_cls_pred = dir_cls_pred.view(B, total_elements, 2)  # (B, H*W*D, 2)
                 
-                # Create target tensors efficiently
+                # Create target tensors efficiently with matching dtypes
                 target_labels = torch.zeros((B, total_elements, C), device=cls_score.device, dtype=cls_score.dtype)
                 target_bboxes = torch.zeros((B, total_elements, 7), device=bbox_pred.device, dtype=bbox_pred.dtype)
                 
@@ -267,7 +294,11 @@ class VoxelNeXtHead(Base3DDenseHead):
                         if len(valid_indices) > 0:
                             # Get labels and bboxes for valid indices
                             labels = gt_labels_3d[i, valid_indices]
-                            bboxes = gt_bboxes_3d[i, valid_indices]
+                            bboxes = gt_bboxes_3d[i, valid_indices].to(dtype=bbox_pred.dtype)  # Convert to matching dtype
+                            
+                            # Validate labels
+                            if not torch.all((labels >= 0) & (labels < C)):
+                                raise ValueError(f'Invalid label values found. Labels must be in range [0, {C-1}]')
                             
                             # Create one-hot encoding for labels efficiently
                             target_labels[i].scatter_(1, labels.unsqueeze(1), 1)
@@ -292,7 +323,7 @@ class VoxelNeXtHead(Base3DDenseHead):
                             valid_indices = valid_indices[valid_indices < total_elements]
                             if len(valid_indices) > 0:
                                 # Get headings for valid indices
-                                headings = gt_bboxes_3d[i, valid_indices, -1]
+                                headings = gt_bboxes_3d[i, valid_indices, -1].to(dtype=dir_cls_pred.dtype)  # Convert to matching dtype
                                 target_direction[i, valid_indices] = (headings > 0).long()
                     
                     # Reshape target direction for loss computation
