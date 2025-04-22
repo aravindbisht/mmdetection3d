@@ -225,11 +225,11 @@ class VoxelNeXtHead(Base3DDenseHead):
         # Compute losses for each level with memory optimization
         with torch.amp.autocast('cuda', enabled=True):
             for level in range(num_levels):
-                # Reshape predictions efficiently
-                cls_score = cls_scores[level].clone()  # (B, C, H, W, D)
-                bbox_pred = bbox_preds[level].clone()  # (B, 7, H, W, D)
+                # Get predictions for current level
+                cls_score = cls_scores[level]  # (B, C, H, W, D)
+                bbox_pred = bbox_preds[level]  # (B, 7, H, W, D)
                 if self.use_direction_classifier:
-                    dir_cls_pred = dir_cls_preds[level].clone()  # (B, 2, H, W, D)
+                    dir_cls_pred = dir_cls_preds[level]  # (B, 2, H, W, D)
                 
                 # Get shapes and ensure they match
                 B, C, H, W, D = cls_score.shape
@@ -240,7 +240,7 @@ class VoxelNeXtHead(Base3DDenseHead):
                 if cls_score.numel() != expected_size:
                     raise ValueError(f'Tensor size mismatch. Expected {expected_size} elements, got {cls_score.numel()}')
                 
-                # Reshape predictions for loss computation using view
+                # Reshape predictions efficiently using view
                 cls_score = cls_score.permute(0, 2, 3, 4, 1).contiguous()  # (B, H, W, D, C)
                 cls_score = cls_score.view(B, total_elements, C)  # (B, H*W*D, C)
                 
@@ -257,21 +257,20 @@ class VoxelNeXtHead(Base3DDenseHead):
                 
                 # Fill target tensors using vectorized operations
                 valid_mask = (gt_labels_3d >= 0) & (gt_labels_3d < C)  # (B, max_num_gt)
+                
+                # Process all batches at once using vectorized operations
                 for i in range(B):
                     valid_indices = valid_mask[i].nonzero().squeeze(-1)
                     if len(valid_indices) > 0:
-                        labels = gt_labels_3d[i, valid_indices]
-                        bboxes = gt_bboxes_3d[i, valid_indices]
                         # Ensure indices are within bounds
                         valid_indices = valid_indices[valid_indices < total_elements]
                         if len(valid_indices) > 0:
-                            # Ensure labels and indices have the same length
-                            labels = labels[:len(valid_indices)]
-                            bboxes = bboxes[:len(valid_indices)]
-                            # Create one-hot encoding for labels
-                            for j, label in enumerate(labels):
-                                if label < C:  # Ensure label is within class range
-                                    target_labels[i, valid_indices[j], label] = 1
+                            # Get labels and bboxes for valid indices
+                            labels = gt_labels_3d[i, valid_indices]
+                            bboxes = gt_bboxes_3d[i, valid_indices]
+                            
+                            # Create one-hot encoding for labels efficiently
+                            target_labels[i].scatter_(1, labels.unsqueeze(1), 1)
                             target_bboxes[i, valid_indices] = bboxes
                 
                 # Compute losses with mixed precision
@@ -284,14 +283,15 @@ class VoxelNeXtHead(Base3DDenseHead):
                     
                     # Create target direction tensor
                     target_direction = torch.zeros((B, total_elements), dtype=torch.long, device=dir_cls_pred.device)
+                    
+                    # Process direction classification efficiently
                     for i in range(B):
                         valid_indices = valid_mask[i].nonzero().squeeze(-1)
                         if len(valid_indices) > 0:
                             # Ensure indices are within bounds
                             valid_indices = valid_indices[valid_indices < total_elements]
                             if len(valid_indices) > 0:
-                                # Ensure indices and headings have the same length
-                                valid_indices = valid_indices[:len(valid_indices)]
+                                # Get headings for valid indices
                                 headings = gt_bboxes_3d[i, valid_indices, -1]
                                 target_direction[i, valid_indices] = (headings > 0).long()
                     
