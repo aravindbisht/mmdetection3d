@@ -377,7 +377,7 @@ class VoxelNeXtHead(Base3DDenseHead):
         
         return losses
     
-    def predict_by_feat(self, cls_scores, bbox_preds, dir_cls_preds=None, input_metas=None):
+    def predict_by_feat(self, cls_scores, bbox_preds, dir_cls_preds=None, input_metas=None, batch_input_metas=None):
         """Transform network output for a batch into bbox predictions.
         
         Args:
@@ -385,6 +385,7 @@ class VoxelNeXtHead(Base3DDenseHead):
             bbox_preds (list[Tensor]): Bbox predictions for each level.
             dir_cls_preds (list[Tensor], optional): Direction classification for each level.
             input_metas (list[dict], optional): Input metas.
+            batch_input_metas (list[dict], optional): Batch input metas (for compatibility).
                 
         Returns:
             list[InstanceData]: Detection results of each sample after the post process.
@@ -393,6 +394,12 @@ class VoxelNeXtHead(Base3DDenseHead):
                 - labels_3d (Tensor): Labels of bboxes, has a shape (num_instances,)
                 - bboxes_3d (LiDARInstance3DBoxes): Prediction of bboxes
         """
+        # Handle both input_metas and batch_input_metas for compatibility
+        if batch_input_metas is not None:
+            input_metas = batch_input_metas
+        elif input_metas is None:
+            input_metas = []
+            
         result_list = []
         
         # Input validation
