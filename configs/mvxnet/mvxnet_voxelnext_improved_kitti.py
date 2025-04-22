@@ -140,7 +140,6 @@ model = dict(
             max_num=50)))
 
 # dataset settings
-# dataset settings
 dataset_type = 'KittiDataset'
 data_root = 'data/kitti/'
 class_names = ['Pedestrian', 'Cyclist', 'Car']
@@ -203,7 +202,9 @@ test_pipeline = [
         ]),
     dict(type='Pack3DDetInputs', keys=['points', 'img'])
 ]
+
 modality = dict(use_lidar=True, use_camera=True)
+
 train_dataloader = dict(
     batch_size=2,
     num_workers=2,
@@ -242,6 +243,7 @@ val_dataloader = dict(
         test_mode=True,
         box_type_3d='LiDAR',
         backend_args=backend_args))
+
 test_dataloader = dict(
     batch_size=1,
     num_workers=1,
@@ -290,7 +292,6 @@ param_scheduler = [
 val_evaluator = dict(
     type='KittiMetric', ann_file='data/kitti/kitti_infos_val.pkl')
 test_evaluator = val_evaluator
-
 
 # training schedule
 train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=5, val_interval=1)
