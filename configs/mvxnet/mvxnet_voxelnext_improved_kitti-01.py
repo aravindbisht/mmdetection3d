@@ -25,7 +25,7 @@ model = dict(
         voxel_encoder=dict(
             type='DynamicVFE',
             in_channels=4,
-            feat_channels=[20],
+            feat_channels=[64],
             with_distance=True,
             with_cluster_center=True,
             with_voxel_center=True,
@@ -49,37 +49,31 @@ model = dict(
         init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
     pts_backbone=dict(
         type='LightweightVoxelNeXtBackbone',
-        in_channels=20,
+        in_channels=64,
         layer_nums=[3, 5, 5],
         layer_strides=[2, 2, 2],
-        out_channels=[128, 256, 512],
+        out_channels=[256, 512, 1024],
         sparse_shape=sparse_shape,
         with_cp=False,
         use_sparse_conv=True,
         groups=4),
-    fusion_layer=dict(
+    pts_fusion_layer=dict(
         type='LightweightAttentionFusion',
-        img_channels=256,
-        pts_channels=512,
-        mid_channels=256,
-        out_channels=512,
+        img_channels=1024,
+        pts_channels=1024,
+        mid_channels=512,
+        out_channels=1024,
         num_heads=8,
         dropout=0.1,
         use_sparse_attention=True),
-    neck=dict(
-        type='FPN',
-        in_channels=[256, 512, 1024, 2048],
-        out_channels=256,
-        num_outs=5),
     pts_bbox_head=dict(
         type='Shared4Conv3DHead',
-        in_channels=512,
-        conv_out_channels=256,
+        in_channels=1024,
+        conv_out_channels=512,
         num_classes=3,
         bbox_coder=dict(
             type='DeltaXYZWLHRBBoxCoder',
-            target_means=[0., 0., 0., 0., 0., 0., 0.],
-            target_stds=[1., 1., 1., 1., 1., 1., 1.])),
+            code_size=7)),
     train_cfg=dict(
         pts=dict(
             assigner=dict(
@@ -108,6 +102,7 @@ class_names = ['Pedestrian', 'Cyclist', 'Car']
 metainfo = dict(classes=class_names)
 input_modality = dict(use_lidar=True, use_camera=True)
 backend_args = None
+
 train_pipeline = [
     dict(type='LoadPointsFromFile', coord_type='LIDAR', load_dim=4, use_dim=4, backend_args=backend_args),
     dict(type='LoadImageFromFile', backend_args=backend_args),
@@ -131,6 +126,7 @@ train_pipeline = [
     dict(type='PointShuffle'),
     dict(type='Pack3DDetInputs', keys=['points', 'img', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
+
 test_pipeline = [
     dict(
         type='LoadPointsFromFile',
@@ -145,7 +141,6 @@ test_pipeline = [
         pts_scale_ratio=1,
         flip=False,
         transforms=[
-            # Temporary solution, fix this after refactor the augtest
             dict(type='Resize', scale=0, keep_ratio=True),
             dict(
                 type='GlobalRotScaleTrans',
@@ -178,8 +173,6 @@ train_dataloader = dict(
             pipeline=train_pipeline,
             filter_empty_gt=False,
             metainfo=metainfo,
-            # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
-            # and box_type_3d='Depth' in sunrgbd and scannet dataset.
             box_type_3d='LiDAR',
             backend_args=backend_args)))
 
@@ -216,11 +209,6 @@ test_dataloader = dict(
         test_mode=True,
         box_type_3d='LiDAR',
         backend_args=backend_args))
-
-# optim_wrapper = dict(
-#     optimizer=dict(weight_decay=0.01),
-#     clip_grad=dict(max_norm=35, norm_type=2),
-# )
 
 # optimizer
 optim_wrapper = dict(
