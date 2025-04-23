@@ -22,16 +22,6 @@ model = dict(
             point_cloud_range=point_cloud_range,
             voxel_size=voxel_size,
             max_voxels=(-1, -1)),
-        voxel_encoder=dict(
-            type='DynamicVFE',
-            in_channels=4,
-            feat_channels=[64],
-            with_distance=True,
-            with_cluster_center=True,
-            with_voxel_center=True,
-            voxel_size=voxel_size,
-            point_cloud_range=point_cloud_range,
-            norm_cfg=dict(type='BN1d', eps=1e-3, momentum=0.01)),
         img_normalize_cfg=dict(
             mean=[123.675, 116.28, 103.53],
             std=[58.395, 57.12, 57.375],
@@ -47,6 +37,16 @@ model = dict(
         norm_eval=True,
         style='pytorch',
         init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
+    pts_voxel_encoder=dict(
+        type='DynamicVFE',
+        in_channels=4,
+        feat_channels=[64],
+        with_distance=True,
+        with_cluster_center=True,
+        with_voxel_center=True,
+        voxel_size=voxel_size,
+        point_cloud_range=point_cloud_range,
+        norm_cfg=dict(type='BN1d', eps=1e-3, momentum=0.01)),
     pts_backbone=dict(
         type='LightweightVoxelNeXtBackbone',
         in_channels=64,
