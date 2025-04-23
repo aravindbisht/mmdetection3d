@@ -19,7 +19,6 @@ model = dict(
         std=[1.0, 1.0, 1.0],
         bgr_to_rgb=False,
         pad_size_divisor=32),
-    # Optimized image branch for inference
     img_backbone=dict(
         type='mmdet.ResNet',
         depth=34,
@@ -35,7 +34,6 @@ model = dict(
         out_channels=128,
         norm_cfg=dict(type='BN', requires_grad=False),
         num_outs=5),
-    # Optimized point cloud branch
     pts_voxel_encoder=dict(
         type='DynamicVFE',
         in_channels=4,
@@ -75,7 +73,6 @@ model = dict(
         upsample_strides=[1, 2, 4],
         out_channels=[128, 128, 128],
         use_sparse_conv=True),
-    # Optimized detection head
     pts_bbox_head=dict(
         type='VoxelNeXtHead',
         num_classes=3,
@@ -89,27 +86,13 @@ model = dict(
             alpha=0.25,
             loss_weight=1.0),
         loss_bbox=dict(
-            type='mmdet.SmoothL1Loss', beta=1.0 / 9.0, loss_weight=2.0),
+            type='mmdet.SmoothL1Loss', 
+            beta=1.0 / 9.0, 
+            loss_weight=2.0),
         loss_dir=dict(
             type='mmdet.CrossEntropyLoss', 
             use_sigmoid=False,
-            loss_weight=0.2),
-        loss_iou=dict(
-            type='RotatedIoU3DLoss',
-            loss_weight=1.0),
-        bbox_coder=dict(
-            type='DeltaXYZWLHRBBoxCoder',
-            target_means=[0., 0., 0., 0., 0., 0., 0.],
-            target_stds=[1., 1., 1., 1., 1., 1., 1.]),
-        test_cfg=dict(
-            score_threshold=0.1,
-            nms_threshold=0.5,
-            use_rotate_nms=True,
-            nms_across_levels=False,
-            nms_pre=100,
-            max_num=50,
-            use_uncertainty=True))  # Enable uncertainty-based NMS
-    # Training and testing settings
+            loss_weight=0.2)),
     train_cfg=dict(
         pts=dict(
             assigner=[
