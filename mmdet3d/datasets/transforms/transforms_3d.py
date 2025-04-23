@@ -2730,6 +2730,14 @@ class LightweightPointAugmentation(BaseTransform):
             
         points = data['points']
         
+        # Convert points to numpy array if it's a tensor
+        if isinstance(points, torch.Tensor):
+            points = points.detach().cpu().numpy()
+        
+        # Ensure points is a 2D array
+        if points.ndim == 1:
+            points = points.reshape(1, -1)
+        
         # Apply sparse point dropout
         if self.drop_ratio > 0:
             num_points = points.shape[0]
@@ -2741,7 +2749,11 @@ class LightweightPointAugmentation(BaseTransform):
         
         # Apply local point jittering
         if self.jitter_std > 0:
-            jitter = np.random.normal(0, self.jitter_std, size=points.shape)
+            # Generate jitter only for XYZ coordinates
+            jitter = np.random.normal(0, self.jitter_std, size=(points.shape[0], 3))
+            # Add zeros for intensity if points have 4 channels
+            if points.shape[1] == 4:
+                jitter = np.concatenate([jitter, np.zeros((points.shape[0], 1))], axis=1)
             points = points + jitter
         
         # Apply efficient global rotation
@@ -2760,6 +2772,10 @@ class LightweightPointAugmentation(BaseTransform):
             num_sample = int(num_points * self.sample_ratio)
             sample_indices = np.random.choice(num_points, num_sample, replace=False)
             points = points[sample_indices]
+        
+        # Convert back to tensor if input was tensor
+        if isinstance(data['points'], torch.Tensor):
+            points = torch.from_numpy(points).float()
         
         data['points'] = points
         return data
