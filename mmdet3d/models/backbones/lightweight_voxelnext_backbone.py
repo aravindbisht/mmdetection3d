@@ -6,13 +6,37 @@ from mmengine.model import BaseModule
 from mmcv.ops import SubMConv3d
 from mmdet3d.registry import MODELS
 
+def channel_shuffle(x, groups):
+    """Channel shuffle operation.
+    
+    Args:
+        x (Tensor): Input tensor.
+        groups (int): Number of groups to shuffle.
+        
+    Returns:
+        Tensor: Shuffled tensor.
+    """
+    batch_size, channels, height, width, depth = x.size()
+    channels_per_group = channels // groups
+    
+    # reshape
+    x = x.view(batch_size, groups, channels_per_group, height, width, depth)
+    
+    # transpose
+    x = torch.transpose(x, 1, 2).contiguous()
+    
+    # flatten
+    x = x.view(batch_size, -1, height, width, depth)
+    
+    return x
+
 @MODELS.register_module()
 class LightweightVoxelNeXtBackbone(BaseModule):
     """Lightweight VoxelNeXt backbone for efficient 3D feature extraction.
     
     This backbone reduces parameters and computation while maintaining feature
     extraction capability through:
-    1. Group convolutions
+    1. Group convolutions with channel shuffling
     2. Channel reduction
     3. Sparse operations
     4. Efficient residual connections
@@ -135,14 +159,13 @@ class LightweightSparseBlock(BaseModule):
         
         # Group convolution for efficiency
         if use_sparse_conv:
-            # Always use SubMConv3d for better efficiency
+            # Use SubMConv3d with channel shuffling for group convolution
             self.conv = SubMConv3d(
                 in_channels,
                 out_channels,
                 kernel_size=3,
                 stride=stride,
                 padding=1,
-                groups=groups,
                 indice_key='subm')
         else:
             self.conv = ConvModule(
@@ -176,8 +199,24 @@ class LightweightSparseBlock(BaseModule):
         """
         identity = x
         
-        # Apply convolution
-        out = self.conv(x)
+        # Apply group convolution with channel shuffling
+        if self.use_sparse_conv:
+            # Reshape for group convolution
+            batch_size, channels, height, width, depth = x.size()
+            x = x.view(batch_size, self.groups, -1, height, width, depth)
+            x = torch.transpose(x, 1, 2).contiguous()
+            x = x.view(batch_size, -1, height, width, depth)
+            
+            # Apply convolution
+            out = self.conv(x)
+            
+            # Reshape back
+            batch_size, channels, height, width, depth = out.size()
+            out = out.view(batch_size, self.groups, -1, height, width, depth)
+            out = torch.transpose(out, 1, 2).contiguous()
+            out = out.view(batch_size, -1, height, width, depth)
+        else:
+            out = self.conv(x)
         
         # Apply normalization and activation
         if isinstance(out, tuple):
