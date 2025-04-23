@@ -4,6 +4,13 @@ _base_ = ['../_base_/schedules/cosine.py', '../_base_/default_runtime.py']
 voxel_size = [0.05, 0.05, 0.1]
 point_cloud_range = [0, -40, -3, 70.4, 40, 1]
 
+# Calculate sparse shape based on point cloud range and voxel size
+sparse_shape = [
+    int((point_cloud_range[3] - point_cloud_range[0]) / voxel_size[0]),
+    int((point_cloud_range[4] - point_cloud_range[1]) / voxel_size[1]),
+    int((point_cloud_range[5] - point_cloud_range[2]) / voxel_size[2])
+]
+
 model = dict(
     type='DynamicMVXFasterRCNN',
     data_preprocessor=dict(
