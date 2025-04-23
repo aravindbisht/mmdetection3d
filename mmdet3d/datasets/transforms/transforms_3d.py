@@ -2730,6 +2730,10 @@ class LightweightPointAugmentation(BaseTransform):
             
         points = data['points']
         
+        # Convert points to numpy array if it's a tensor
+        if isinstance(points, torch.Tensor):
+            points = points.numpy()
+        
         # Apply sparse point dropout
         if self.drop_ratio > 0:
             num_points = points.shape[0]
@@ -2760,6 +2764,10 @@ class LightweightPointAugmentation(BaseTransform):
             num_sample = int(num_points * self.sample_ratio)
             sample_indices = np.random.choice(num_points, num_sample, replace=False)
             points = points[sample_indices]
+        
+        # Convert back to tensor if input was tensor
+        if isinstance(data['points'], torch.Tensor):
+            points = torch.from_numpy(points).float()
         
         data['points'] = points
         return data
