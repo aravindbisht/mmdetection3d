@@ -3,7 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import ConvModule
 from mmengine.model import BaseModule
+from mmdet3d.registry import MODELS
 
+@MODELS.register_module()
 class LightweightAttentionFusion(BaseModule):
     """Lightweight attention fusion module for image and point cloud features.
     
