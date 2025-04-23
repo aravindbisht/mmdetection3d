@@ -27,10 +27,11 @@ model = dict(
         frozen_stages=1,
         norm_cfg=dict(type='BN', requires_grad=False),
         norm_eval=True,
-        style='caffe'),
+        style='caffe',
+        base_channels=64),
     img_neck=dict(
         type='mmdet.FPN',
-        in_channels=[256, 512, 1024, 2048],
+        in_channels=[64, 128, 256, 512],
         out_channels=128,
         norm_cfg=dict(type='BN', requires_grad=False),
         num_outs=5),
