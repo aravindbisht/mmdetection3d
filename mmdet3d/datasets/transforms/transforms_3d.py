@@ -2683,3 +2683,147 @@ class LaserMix(BaseTransform):
         repr_str += f'pre_transform={self.pre_transform}, '
         repr_str += f'prob={self.prob})'
         return repr_str
+
+
+@TRANSFORMS.register_module()
+class LightweightPointAugmentation(BaseTransform):
+    """Lightweight point cloud augmentation for improved robustness.
+    
+    This augmentation applies efficient transformations to point clouds
+    while minimizing computational overhead. It includes:
+    1. Sparse point dropout
+    2. Local point jittering
+    3. Efficient global rotation
+    4. Adaptive point sampling
+    
+    Args:
+        drop_ratio (float): Ratio of points to drop. Defaults to 0.1.
+        jitter_std (float): Standard deviation of point jittering. Defaults to 0.01.
+        rot_range (list[float]): Range of rotation angles. Defaults to [-0.78539816, 0.78539816].
+        sample_ratio (float): Ratio of points to sample. Defaults to 1.0.
+        prob (float): Probability of applying augmentation. Defaults to 0.5.
+    """
+    
+    def __init__(self,
+                 drop_ratio=0.1,
+                 jitter_std=0.01,
+                 rot_range=[-0.78539816, 0.78539816],
+                 sample_ratio=1.0,
+                 prob=0.5):
+        self.drop_ratio = drop_ratio
+        self.jitter_std = jitter_std
+        self.rot_range = rot_range
+        self.sample_ratio = sample_ratio
+        self.prob = prob
+    
+    def transform(self, data):
+        """Call function.
+        
+        Args:
+            data (dict): Result dict from loading pipeline.
+            
+        Returns:
+            dict: Result dict with augmented points.
+        """
+        if np.random.random() > self.prob:
+            return data
+            
+        points = data['points']
+        
+        # Apply sparse point dropout
+        if self.drop_ratio > 0:
+            num_points = points.shape[0]
+            num_drop = int(num_points * self.drop_ratio)
+            drop_indices = np.random.choice(num_points, num_drop, replace=False)
+            mask = np.ones(num_points, dtype=bool)
+            mask[drop_indices] = False
+            points = points[mask]
+        
+        # Apply local point jittering
+        if self.jitter_std > 0:
+            jitter = np.random.normal(0, self.jitter_std, size=points.shape)
+            points = points + jitter
+        
+        # Apply efficient global rotation
+        if self.rot_range is not None:
+            rot_angle = np.random.uniform(self.rot_range[0], self.rot_range[1])
+            rot_matrix = np.array([
+                [np.cos(rot_angle), -np.sin(rot_angle), 0],
+                [np.sin(rot_angle), np.cos(rot_angle), 0],
+                [0, 0, 1]
+            ])
+            points[:, :3] = np.dot(points[:, :3], rot_matrix.T)
+        
+        # Apply adaptive point sampling
+        if self.sample_ratio < 1.0:
+            num_points = points.shape[0]
+            num_sample = int(num_points * self.sample_ratio)
+            sample_indices = np.random.choice(num_points, num_sample, replace=False)
+            points = points[sample_indices]
+        
+        data['points'] = points
+        return data
+
+@TRANSFORMS.register_module()
+class SparseImageAugmentation(BaseTransform):
+    """Sparse image augmentation for improved robustness.
+    
+    This augmentation applies efficient transformations to images
+    while minimizing computational overhead. It includes:
+    1. Sparse pixel dropout
+    2. Local contrast adjustment
+    3. Efficient color jittering
+    
+    Args:
+        drop_ratio (float): Ratio of pixels to drop. Defaults to 0.05.
+        contrast_range (list[float]): Range of contrast adjustment. Defaults to [0.8, 1.2].
+        color_jitter (list[float]): Range of color jittering. Defaults to [0.0, 0.1].
+        prob (float): Probability of applying augmentation. Defaults to 0.5.
+    """
+    
+    def __init__(self,
+                 drop_ratio=0.05,
+                 contrast_range=[0.8, 1.2],
+                 color_jitter=[0.0, 0.1],
+                 prob=0.5):
+        self.drop_ratio = drop_ratio
+        self.contrast_range = contrast_range
+        self.color_jitter = color_jitter
+        self.prob = prob
+    
+    def transform(self, data):
+        """Call function.
+        
+        Args:
+            data (dict): Result dict from loading pipeline.
+            
+        Returns:
+            dict: Result dict with augmented image.
+        """
+        if np.random.random() > self.prob:
+            return data
+            
+        img = data['img']
+        
+        # Apply sparse pixel dropout
+        if self.drop_ratio > 0:
+            mask = np.random.random(img.shape[:2]) > self.drop_ratio
+            mask = mask[:, :, np.newaxis]
+            img = img * mask
+        
+        # Apply local contrast adjustment
+        if self.contrast_range is not None:
+            contrast_factor = np.random.uniform(
+                self.contrast_range[0], self.contrast_range[1])
+            img = img * contrast_factor
+            img = np.clip(img, 0, 255).astype(np.uint8)
+        
+        # Apply efficient color jittering
+        if self.color_jitter is not None:
+            jitter = np.random.uniform(
+                -self.color_jitter[1], self.color_jitter[1], size=3)
+            img = img + jitter[np.newaxis, np.newaxis, :]
+            img = np.clip(img, 0, 255).astype(np.uint8)
+        
+        data['img'] = img
+        return data
