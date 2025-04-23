@@ -2702,6 +2702,7 @@ class LightweightPointAugmentation(BaseTransform):
         rot_range (list[float]): Range of rotation angles. Defaults to [-0.78539816, 0.78539816].
         sample_ratio (float): Ratio of points to sample. Defaults to 1.0.
         prob (float): Probability of applying augmentation. Defaults to 0.5.
+        keep_original_format (bool): Whether to keep the original point cloud format. Defaults to True.
     """
     
     def __init__(self,
@@ -2709,12 +2710,14 @@ class LightweightPointAugmentation(BaseTransform):
                  jitter_std=0.01,
                  rot_range=[-0.78539816, 0.78539816],
                  sample_ratio=1.0,
-                 prob=0.5):
+                 prob=0.5,
+                 keep_original_format=True):
         self.drop_ratio = drop_ratio
         self.jitter_std = jitter_std
         self.rot_range = rot_range
         self.sample_ratio = sample_ratio
         self.prob = prob
+        self.keep_original_format = keep_original_format
     
     def transform(self, data):
         """Call function.
@@ -2729,30 +2732,36 @@ class LightweightPointAugmentation(BaseTransform):
             return data
             
         points = data['points']
+        original_format = type(points)
         
-        # Convert points to numpy array
+        # Convert points to numpy array while preserving format info
         if hasattr(points, 'tensor'):
-            points = points.tensor.detach().cpu().numpy()
+            points_np = points.tensor.detach().cpu().numpy()
+            is_lidar_points = True
         elif isinstance(points, torch.Tensor):
-            points = points.detach().cpu().numpy()
+            points_np = points.detach().cpu().numpy()
+            is_lidar_points = False
+        else:
+            points_np = points
+            is_lidar_points = False
         
         # Apply sparse point dropout
         if self.drop_ratio > 0:
-            num_points = points.shape[0]
+            num_points = points_np.shape[0]
             num_drop = int(num_points * self.drop_ratio)
             drop_indices = np.random.choice(num_points, num_drop, replace=False)
             mask = np.ones(num_points, dtype=bool)
             mask[drop_indices] = False
-            points = points[mask]
+            points_np = points_np[mask]
         
         # Apply local point jittering
         if self.jitter_std > 0:
             # Generate jitter only for XYZ coordinates
-            jitter = np.random.normal(0, self.jitter_std, size=(points.shape[0], 3))
+            jitter = np.random.normal(0, self.jitter_std, size=(points_np.shape[0], 3))
             # Add zeros for intensity if points have 4 channels
-            if points.shape[1] == 4:
-                jitter = np.concatenate([jitter, np.zeros((points.shape[0], 1))], axis=1)
-            points = points + jitter
+            if points_np.shape[1] == 4:
+                jitter = np.concatenate([jitter, np.zeros((points_np.shape[0], 1))], axis=1)
+            points_np = points_np + jitter
         
         # Apply efficient global rotation
         if self.rot_range is not None:
@@ -2762,20 +2771,23 @@ class LightweightPointAugmentation(BaseTransform):
                 [np.sin(rot_angle), np.cos(rot_angle), 0],
                 [0, 0, 1]
             ])
-            points[:, :3] = np.dot(points[:, :3], rot_matrix.T)
+            points_np[:, :3] = np.dot(points_np[:, :3], rot_matrix.T)
         
         # Apply adaptive point sampling
         if self.sample_ratio < 1.0:
-            num_points = points.shape[0]
+            num_points = points_np.shape[0]
             num_sample = int(num_points * self.sample_ratio)
             sample_indices = np.random.choice(num_points, num_sample, replace=False)
-            points = points[sample_indices]
+            points_np = points_np[sample_indices]
         
-        # Convert back to LiDARPoints if input was LiDARPoints
-        if hasattr(data['points'], 'tensor'):
-            data['points'].tensor = torch.from_numpy(points).float()
+        # Convert back to original format
+        if self.keep_original_format:
+            if is_lidar_points:
+                data['points'].tensor = torch.from_numpy(points_np).float()
+            else:
+                data['points'] = points_np
         else:
-            data['points'] = points
+            data['points'] = points_np
             
         return data
 
