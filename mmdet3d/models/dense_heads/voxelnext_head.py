@@ -8,18 +8,17 @@ from mmdet3d.models.losses import RotatedIoU3DLoss
 from mmdet3d.structures import Det3DDataSample
 from mmdet3d.models.task_modules import Anchor3DRangeGenerator
 from mmdet3d.models.task_modules.coders import DeltaXYZWLHRBBoxCoder
-from mmdet3d.models.dense_heads.base_3d_dense_head import Base3DDenseHead
 from mmdet3d.utils.typing_utils import InstanceList, SampleList
 from typing import List, Optional, Tuple, Dict, Union
 from mmengine.config import ConfigDict
 from mmengine.structures import InstanceData
 from mmdet3d.registry import MODELS, TASK_UTILS
 from mmdet3d.structures import LiDARInstance3DBoxes
-from mmcv.ops.nms import batched_nms
+from mmdet.models.utils import batched_nms
 
 @MODELS.register_module()
-class VoxelNeXtHead(Base3DDenseHead):
-    """Anchor-free 3D detection head inspired by VoxelNeXt.
+class VoxelNeXtHead(BaseModule):
+    """Sparse 3D detection head for VoxelNeXt.
     
     This head predicts objects directly from sparse voxel features without
     using anchors or center proxies.
@@ -178,6 +177,167 @@ class VoxelNeXtHead(Base3DDenseHead):
                     dir_cls_preds.append(None)
         
         return cls_scores, bbox_preds, dir_cls_preds
+    
+    def predict_by_feat(self,
+                       cls_scores,
+                       bbox_preds,
+                       dir_cls_preds,
+                       input_metas=None,
+                       batch_input_metas=None,
+                       rescale=False,
+                       cfg=None,
+                       **kwargs):
+        """Transform network output for a batch into bbox predictions.
+
+        Args:
+            cls_scores (List[Tensor]): Classification scores for each level
+            bbox_preds (List[Tensor]): Box regression for each level
+            dir_cls_preds (List[Tensor]): Direction classification for each level
+            input_metas (list[dict], optional): Input meta info. Defaults to None.
+            batch_input_metas (list[dict], optional): Batch input meta info. Defaults to None.
+            rescale (bool): Whether to rescale bbox. Defaults to False.
+            cfg (ConfigDict, optional): Test / postprocessing configuration. Defaults to None.
+            **kwargs: Additional arguments from base class
+
+        Returns:
+            list[tuple[Tensor, Tensor, Tensor]]: Each item in result_list is
+                3-tuple. The first item is an (n, 5) tensor, where the first 4
+                columns are bounding box positions (tl_x, tl_y, br_x, br_y) and
+                the 5-th column is a score between 0 and 1. The second item is an
+                (n,) tensor where each item is the predicted class label of the
+                corresponding box. The third item is an (n,) tensor where each item
+                is the predicted direction label of the corresponding box.
+        """
+        result_list = []
+        if input_metas is None:
+            input_metas = batch_input_metas if batch_input_metas is not None else [{}] * len(cls_scores[0])
+        
+        # Get voxel size from input metas or use default
+        voxel_size = None
+        for meta in input_metas:
+            if 'voxel_size' in meta:
+                voxel_size = meta['voxel_size']
+                break
+        if voxel_size is None:
+            voxel_size = [0.05, 0.05, 0.1]  # Default KITTI voxel size
+
+        for img_id in range(len(input_metas)):
+            try:
+                cls_score_list = [
+                    cls_scores[i][img_id].detach() for i in range(len(cls_scores))
+                ]
+                bbox_pred_list = [
+                    bbox_preds[i][img_id].detach() for i in range(len(bbox_preds))
+                ]
+                dir_cls_pred_list = [
+                    dir_cls_preds[i][img_id].detach() for i in range(len(dir_cls_preds))
+                ]
+
+                input_meta = input_metas[img_id]
+                batch_size = input_meta.get('batch_size', 1)
+                
+                # Process predictions level by level
+                bboxes_list = []
+                scores_list = []
+                dir_labels_list = []
+                batch_indices = []
+                
+                for level_id in range(len(cls_score_list)):
+                    try:
+                        cls_score = cls_score_list[level_id]
+                        bbox_pred = bbox_pred_list[level_id]
+                        dir_cls_pred = dir_cls_pred_list[level_id]
+                        
+                        # Ensure tensors are on the correct device
+                        device = cls_score.device
+                        
+                        # Get predictions
+                        scores = cls_score.sigmoid()
+                        bbox_pred = bbox_pred.reshape(-1, self.box_code_size)
+                        dir_cls_pred = dir_cls_pred.reshape(-1, 2)
+                        
+                        # Apply score threshold
+                        score_threshold = getattr(self, 'score_threshold', 0.1)
+                        score_mask = scores > score_threshold
+                        
+                        if score_mask.any():
+                            # Filter predictions
+                            scores = scores[score_mask]
+                            bbox_pred = bbox_pred[score_mask]
+                            dir_cls_pred = dir_cls_pred[score_mask]
+                            
+                            # Get direction labels
+                            dir_labels = torch.max(dir_cls_pred, dim=-1)[1]
+                            
+                            # Create batch indices
+                            level_batch_indices = torch.full((len(scores),), level_id, device=device)
+                            
+                            # Add to lists
+                            bboxes_list.append(bbox_pred)
+                            scores_list.append(scores)
+                            dir_labels_list.append(dir_labels)
+                            batch_indices.append(level_batch_indices)
+                    except Exception as e:
+                        print(f"Error processing level {level_id}: {str(e)}")
+                        continue
+                
+                if not bboxes_list:
+                    # No valid predictions
+                    empty_bbox = torch.zeros((0, self.box_code_size), device=device)
+                    empty_score = torch.zeros((0,), device=device)
+                    empty_dir = torch.zeros((0,), device=device)
+                    result_list.append((empty_bbox, empty_score, empty_dir))
+                    continue
+                
+                # Concatenate predictions from all levels
+                bboxes = torch.cat(bboxes_list, dim=0)
+                scores = torch.cat(scores_list, dim=0)
+                dir_labels = torch.cat(dir_labels_list, dim=0)
+                batch_indices = torch.cat(batch_indices, dim=0)
+                
+                # Apply NMS
+                nms_threshold = getattr(self, 'nms_threshold', 0.5)
+                nms_cfg = dict(
+                    type='nms',
+                    iou_threshold=nms_threshold,
+                    score_threshold=score_threshold)
+                
+                # Perform NMS
+                nms_bboxes, nms_scores, nms_dir_labels = [], [], []
+                for level_id in range(len(cls_score_list)):
+                    level_mask = batch_indices == level_id
+                    if level_mask.any():
+                        level_bboxes = bboxes[level_mask]
+                        level_scores = scores[level_mask]
+                        level_dir_labels = dir_labels[level_mask]
+                        
+                        # Apply NMS
+                        keep = batched_nms(level_bboxes, level_scores, level_dir_labels, nms_cfg)
+                        
+                        nms_bboxes.append(level_bboxes[keep])
+                        nms_scores.append(level_scores[keep])
+                        nms_dir_labels.append(level_dir_labels[keep])
+                
+                if nms_bboxes:
+                    final_bboxes = torch.cat(nms_bboxes, dim=0)
+                    final_scores = torch.cat(nms_scores, dim=0)
+                    final_dir_labels = torch.cat(nms_dir_labels, dim=0)
+                else:
+                    final_bboxes = torch.zeros((0, self.box_code_size), device=device)
+                    final_scores = torch.zeros((0,), device=device)
+                    final_dir_labels = torch.zeros((0,), device=device)
+                
+                result_list.append((final_bboxes, final_scores, final_dir_labels))
+            except Exception as e:
+                print(f"Error processing sample {img_id}: {str(e)}")
+                # Return empty result for this sample
+                device = cls_scores[0].device
+                empty_bbox = torch.zeros((0, self.box_code_size), device=device)
+                empty_score = torch.zeros((0,), device=device)
+                empty_dir = torch.zeros((0,), device=device)
+                result_list.append((empty_bbox, empty_score, empty_dir))
+        
+        return result_list
     
     def loss_by_feat(self, cls_scores, bbox_preds, dir_cls_preds, batch_gt_instances_3d, batch_gt_instances_ignore=None, batch_input_metas=None):
         """Loss function.
@@ -385,167 +545,6 @@ class VoxelNeXtHead(Base3DDenseHead):
                 raise ValueError(f'NaN detected in {k}')
         
         return losses
-    
-    def predict_by_feat(self,
-                         cls_scores,
-                         bbox_preds,
-                         dir_cls_preds,
-                         input_metas=None,
-                         batch_input_metas=None,
-                         rescale=False,
-                         cfg=None,
-                         **kwargs):
-        """Transform network output for a batch into bbox predictions.
-
-        Args:
-            cls_scores (List[Tensor]): Classification scores for each level
-            bbox_preds (List[Tensor]): Box regression for each level
-            dir_cls_preds (List[Tensor]): Direction classification for each level
-            input_metas (list[dict], optional): Input meta info. Defaults to None.
-            batch_input_metas (list[dict], optional): Batch input meta info. Defaults to None.
-            rescale (bool): Whether to rescale bbox. Defaults to False.
-            cfg (ConfigDict, optional): Test / postprocessing configuration. Defaults to None.
-            **kwargs: Additional arguments from base class
-
-        Returns:
-            list[tuple[Tensor, Tensor, Tensor]]: Each item in result_list is
-                3-tuple. The first item is an (n, 5) tensor, where the first 4
-                columns are bounding box positions (tl_x, tl_y, br_x, br_y) and
-                the 5-th column is a score between 0 and 1. The second item is an
-                (n,) tensor where each item is the predicted class label of the
-                corresponding box. The third item is an (n,) tensor where each
-                item is the predicted direction label of the corresponding box.
-        """
-        result_list = []
-        if input_metas is None:
-            input_metas = batch_input_metas if batch_input_metas is not None else [{}] * len(cls_scores[0])
-        
-        # Get voxel size from input metas or use default
-        voxel_size = None
-        for meta in input_metas:
-            if 'voxel_size' in meta:
-                voxel_size = meta['voxel_size']
-                break
-        if voxel_size is None:
-            voxel_size = [0.05, 0.05, 0.1]  # Default KITTI voxel size
-
-        for img_id in range(len(input_metas)):
-            try:
-                cls_score_list = [
-                    cls_scores[i][img_id].detach() for i in range(len(cls_scores))
-                ]
-                bbox_pred_list = [
-                    bbox_preds[i][img_id].detach() for i in range(len(bbox_preds))
-                ]
-                dir_cls_pred_list = [
-                    dir_cls_preds[i][img_id].detach() for i in range(len(dir_cls_preds))
-                ]
-
-                input_meta = input_metas[img_id]
-                batch_size = input_meta.get('batch_size', 1)
-                
-                # Process predictions level by level
-                bboxes_list = []
-                scores_list = []
-                dir_labels_list = []
-                batch_indices = []
-                
-                for level_id in range(len(cls_score_list)):
-                    try:
-                        cls_score = cls_score_list[level_id]
-                        bbox_pred = bbox_pred_list[level_id]
-                        dir_cls_pred = dir_cls_pred_list[level_id]
-                        
-                        # Ensure tensors are on the correct device
-                        device = cls_score.device
-                        
-                        # Get predictions
-                        scores = cls_score.sigmoid()
-                        bbox_pred = bbox_pred.reshape(-1, self.box_code_size)
-                        dir_cls_pred = dir_cls_pred.reshape(-1, 2)
-                        
-                        # Apply score threshold
-                        score_threshold = getattr(self, 'score_threshold', 0.1)
-                        score_mask = scores > score_threshold
-                        
-                        if score_mask.any():
-                            # Filter predictions
-                            scores = scores[score_mask]
-                            bbox_pred = bbox_pred[score_mask]
-                            dir_cls_pred = dir_cls_pred[score_mask]
-                            
-                            # Get direction labels
-                            dir_labels = torch.max(dir_cls_pred, dim=-1)[1]
-                            
-                            # Create batch indices
-                            level_batch_indices = torch.full((len(scores),), level_id, device=device)
-                            
-                            # Add to lists
-                            bboxes_list.append(bbox_pred)
-                            scores_list.append(scores)
-                            dir_labels_list.append(dir_labels)
-                            batch_indices.append(level_batch_indices)
-                    except Exception as e:
-                        print(f"Error processing level {level_id}: {str(e)}")
-                        continue
-                
-                if not bboxes_list:
-                    # No valid predictions
-                    empty_bbox = torch.zeros((0, self.box_code_size), device=device)
-                    empty_score = torch.zeros((0,), device=device)
-                    empty_dir = torch.zeros((0,), device=device)
-                    result_list.append((empty_bbox, empty_score, empty_dir))
-                    continue
-                
-                # Concatenate predictions from all levels
-                bboxes = torch.cat(bboxes_list, dim=0)
-                scores = torch.cat(scores_list, dim=0)
-                dir_labels = torch.cat(dir_labels_list, dim=0)
-                batch_indices = torch.cat(batch_indices, dim=0)
-                
-                # Apply NMS
-                nms_threshold = getattr(self, 'nms_threshold', 0.5)
-                nms_cfg = dict(
-                    type='nms',
-                    iou_threshold=nms_threshold,
-                    score_threshold=score_threshold)
-                
-                # Perform NMS
-                nms_bboxes, nms_scores, nms_dir_labels = [], [], []
-                for level_id in range(len(cls_score_list)):
-                    level_mask = batch_indices == level_id
-                    if level_mask.any():
-                        level_bboxes = bboxes[level_mask]
-                        level_scores = scores[level_mask]
-                        level_dir_labels = dir_labels[level_mask]
-                        
-                        # Apply NMS
-                        keep = batched_nms(level_bboxes, level_scores, level_dir_labels, nms_cfg)
-                        
-                        nms_bboxes.append(level_bboxes[keep])
-                        nms_scores.append(level_scores[keep])
-                        nms_dir_labels.append(level_dir_labels[keep])
-                
-                if nms_bboxes:
-                    final_bboxes = torch.cat(nms_bboxes, dim=0)
-                    final_scores = torch.cat(nms_scores, dim=0)
-                    final_dir_labels = torch.cat(nms_dir_labels, dim=0)
-                else:
-                    final_bboxes = torch.zeros((0, self.box_code_size), device=device)
-                    final_scores = torch.zeros((0,), device=device)
-                    final_dir_labels = torch.zeros((0,), device=device)
-                
-                result_list.append((final_bboxes, final_scores, final_dir_labels))
-            except Exception as e:
-                print(f"Error processing sample {img_id}: {str(e)}")
-                # Return empty result for this sample
-                device = cls_scores[0].device
-                empty_bbox = torch.zeros((0, self.box_code_size), device=device)
-                empty_score = torch.zeros((0,), device=device)
-                empty_dir = torch.zeros((0,), device=device)
-                result_list.append((empty_bbox, empty_score, empty_dir))
-        
-        return result_list
     
     def _rotate_nms(self, bboxes, scores, nms_thr, nms_type='default'):
         """Rotated NMS for 3D boxes.
