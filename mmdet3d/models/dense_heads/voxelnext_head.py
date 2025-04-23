@@ -56,6 +56,14 @@ class VoxelNeXtHead(Base3DDenseHead):
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
         
+        # Add score threshold and NMS threshold from test_cfg
+        if test_cfg is not None:
+            self.score_threshold = test_cfg.get('score_threshold', 0.1)
+            self.nms_threshold = test_cfg.get('nms_threshold', 0.5)
+        else:
+            self.score_threshold = 0.1
+            self.nms_threshold = 0.5
+        
         # Initialize bbox coder properly
         self.bbox_coder = TASK_UTILS.build(bbox_coder)
         
@@ -407,6 +415,7 @@ class VoxelNeXtHead(Base3DDenseHead):
         cfg = self.test_cfg if cfg is None else cfg
             
         result_list = []
+        all_batch_indices = []  # Store batch indices for all levels
         
         # Input validation
         if not isinstance(cls_scores, list) or not isinstance(bbox_preds, list):
@@ -475,6 +484,7 @@ class VoxelNeXtHead(Base3DDenseHead):
                 if not mask.any():
                     result_list.append((torch.empty((0, 7), device=cls_score.device),
                                     torch.empty((0,), device=cls_score.device)))
+                    all_batch_indices.append(torch.empty((0,), device=cls_score.device))
                     continue
                 
                 # Filter predictions using mask
@@ -484,6 +494,7 @@ class VoxelNeXtHead(Base3DDenseHead):
                 
                 # Get batch indices for filtered predictions
                 batch_indices = torch.arange(B, device=cls_score.device).view(-1, 1).expand(-1, H*W*D)[mask]
+                all_batch_indices.append(batch_indices)
                 
                 # Apply direction classification if enabled
                 if self.use_direction_classifier:
@@ -511,6 +522,7 @@ class VoxelNeXtHead(Base3DDenseHead):
                 bbox_pred = bbox_pred[keep]
                 scores = scores[keep]
                 indices = indices[keep]
+                batch_indices = batch_indices[keep]
                 
                 # Create result tuple
                 result_list.append((bbox_pred, indices))
@@ -520,6 +532,7 @@ class VoxelNeXtHead(Base3DDenseHead):
                 print(f"Error processing level {level}: {str(e)}")
                 result_list.append((torch.empty((0, 7), device=cls_scores[0].device),
                                 torch.empty((0,), device=cls_scores[0].device)))
+                all_batch_indices.append(torch.empty((0,), device=cls_scores[0].device))
         
         # Convert results to InstanceData format
         results = []
@@ -530,14 +543,15 @@ class VoxelNeXtHead(Base3DDenseHead):
                 sample_scores = []
                 sample_labels = []
                 
-                for level_result in result_list:
+                for level_idx, level_result in enumerate(result_list):
                     bboxes, level_indices = level_result
+                    batch_indices = all_batch_indices[level_idx]
                     # Filter for current sample
                     sample_mask = batch_indices == i
                     if sample_mask.any():
                         sample_bboxes.append(bboxes[sample_mask])
                         sample_scores.append(scores[sample_mask])
-                        sample_labels.append(indices[sample_mask])
+                        sample_labels.append(level_indices[sample_mask])
                 
                 if not sample_bboxes:
                     # Create empty result
