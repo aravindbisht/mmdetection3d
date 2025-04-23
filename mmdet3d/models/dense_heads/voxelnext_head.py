@@ -15,7 +15,7 @@ from mmengine.config import ConfigDict
 from mmengine.structures import InstanceData
 from mmdet3d.registry import MODELS, TASK_UTILS
 from mmdet3d.structures import LiDARInstance3DBoxes
-from mmdet3d.utils.nms import batched_nms
+from mmcv.ops.nms import batched_nms
 
 @MODELS.register_module()
 class VoxelNeXtHead(Base3DDenseHead):
