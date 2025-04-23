@@ -98,7 +98,14 @@ model = dict(
         loss_iou=dict(
             type='RotatedIoU3DLoss',
             loss_weight=1.0),
-        bbox_coder=dict(type='DeltaXYZWLHRBBoxCoder')),
+        bbox_coder=dict(type='DeltaXYZWLHRBBoxCoder'),
+        test_cfg=dict(
+            score_threshold=0.1,
+            nms_threshold=0.5,
+            use_rotate_nms=True,
+            nms_across_levels=False,
+            nms_pre=100,
+            max_num=50)),
     # Training and testing settings
     train_cfg=dict(
         pts=dict(
