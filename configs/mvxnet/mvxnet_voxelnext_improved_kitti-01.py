@@ -45,8 +45,7 @@ model = dict(
         with_voxel_center=True,
         point_cloud_range=point_cloud_range,
         norm_cfg=dict(type='BN1d', eps=1e-3, momentum=0.01),
-        mode='max',
-        use_xyz_only=False),
+        mode='max'),
     pts_fusion_layer=dict(
         type='LightweightAttentionFusion',
         img_channels=128,  # Match FPN output channels
