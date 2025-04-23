@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import ConvModule
 from mmengine.model import BaseModule
-from mmcv.ops import SparseConv3d, SubMConv3d
+from mmcv.ops import SubMConv3d
 from mmdet3d.registry import MODELS
 
 @MODELS.register_module()
@@ -26,6 +26,7 @@ class LightweightVoxelNeXtBackbone(BaseModule):
         with_cp (bool): Use checkpoint or not.
         use_sparse_conv (bool): Use sparse convolution or not.
         groups (int): Number of groups for group convolution.
+        use_subm_conv (bool): Whether to use SubMConv3d for all convolutions.
     """
     
     def __init__(self,
@@ -37,6 +38,7 @@ class LightweightVoxelNeXtBackbone(BaseModule):
                  with_cp=False,
                  use_sparse_conv=True,
                  groups=4,
+                 use_subm_conv=True,
                  init_cfg=None):
         super().__init__(init_cfg=init_cfg)
         
@@ -48,6 +50,7 @@ class LightweightVoxelNeXtBackbone(BaseModule):
         self.with_cp = with_cp
         self.use_sparse_conv = use_sparse_conv
         self.groups = groups
+        self.use_subm_conv = use_subm_conv
         
         # Ensure channels are divisible by groups
         assert all(c % groups == 0 for c in out_channels), \
@@ -70,7 +73,8 @@ class LightweightVoxelNeXtBackbone(BaseModule):
                         stride=stride,
                         sparse_shape=sparse_shape,
                         use_sparse_conv=use_sparse_conv,
-                        groups=groups))
+                        groups=groups,
+                        use_subm_conv=use_subm_conv))
             self.blocks.append(block)
     
     def forward(self, x):
@@ -104,6 +108,7 @@ class LightweightSparseBlock(BaseModule):
         sparse_shape (list[int]): Shape of sparse tensor.
         use_sparse_conv (bool): Use sparse convolution or not.
         groups (int): Number of groups for group convolution.
+        use_subm_conv (bool): Whether to use SubMConv3d for all convolutions.
     """
     
     def __init__(self,
@@ -113,6 +118,7 @@ class LightweightSparseBlock(BaseModule):
                  sparse_shape,
                  use_sparse_conv=True,
                  groups=4,
+                 use_subm_conv=True,
                  init_cfg=None):
         super().__init__(init_cfg=init_cfg)
         
@@ -121,6 +127,7 @@ class LightweightSparseBlock(BaseModule):
         self.stride = stride
         self.use_sparse_conv = use_sparse_conv
         self.groups = groups
+        self.use_subm_conv = use_subm_conv
         
         # Ensure channels are divisible by groups
         assert in_channels % groups == 0 and out_channels % groups == 0, \
@@ -128,24 +135,15 @@ class LightweightSparseBlock(BaseModule):
         
         # Group convolution for efficiency
         if use_sparse_conv:
-            if stride == 1:
-                self.conv = SubMConv3d(
-                    in_channels,
-                    out_channels,
-                    kernel_size=3,
-                    stride=stride,
-                    padding=1,
-                    groups=groups,
-                    indice_key='subm')
-            else:
-                self.conv = SparseConv3d(
-                    in_channels,
-                    out_channels,
-                    kernel_size=3,
-                    stride=stride,
-                    padding=1,
-                    groups=groups,
-                    indice_key='spconv')
+            # Always use SubMConv3d for better efficiency
+            self.conv = SubMConv3d(
+                in_channels,
+                out_channels,
+                kernel_size=3,
+                stride=stride,
+                padding=1,
+                groups=groups,
+                indice_key='subm')
         else:
             self.conv = ConvModule(
                 in_channels,
