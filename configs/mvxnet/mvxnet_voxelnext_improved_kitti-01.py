@@ -174,7 +174,7 @@ train_pipeline = [
     dict(type='PointsRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='PointShuffle'),
-    dict(type='Pack3DDetInputs', data_keys=['points', 'img', 'gt_bboxes_3d', 'gt_labels_3d'])
+    dict(type='PackDet3DInputs', keys=['points', 'img', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
 test_pipeline = [
     dict(
@@ -201,7 +201,7 @@ test_pipeline = [
             dict(
                 type='PointsRangeFilter', point_cloud_range=point_cloud_range),
         ]),
-    dict(type='Pack3DDetInputs', data_keys=['points', 'img'])
+    dict(type='PackDet3DInputs', keys=['points', 'img'])
 ]
 
 modality = dict(use_lidar=True, use_camera=True)
