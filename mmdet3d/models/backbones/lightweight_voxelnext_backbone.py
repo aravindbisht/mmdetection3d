@@ -3,8 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import ConvModule
 from mmengine.model import BaseModule
-from mmdet3d.ops import SparseConv3d, SubMConv3d
+from mmcv.ops import SparseConv3d, SubMConv3d
+from mmdet3d.registry import MODELS
 
+@MODELS.register_module()
 class LightweightVoxelNeXtBackbone(BaseModule):
     """Lightweight VoxelNeXt backbone for efficient 3D feature extraction.
     
