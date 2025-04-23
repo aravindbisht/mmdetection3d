@@ -36,9 +36,8 @@ model = dict(
         norm_cfg=dict(type='BN', requires_grad=False),
         num_outs=5),
     pts_voxel_encoder=dict(
-        type='DynamicSimpleVFE',
-        voxel_size=voxel_size,
-        point_cloud_range=point_cloud_range),
+        type='HardSimpleVFE',
+        num_features=4),
     pts_fusion_layer=dict(
         type='LightweightAttentionFusion',
         img_channels=128,  # Match FPN output channels
