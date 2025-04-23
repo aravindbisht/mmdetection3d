@@ -40,9 +40,9 @@ model = dict(
         in_channels=4,  # x, y, z, intensity
         feat_channels=[32, 32],
         with_distance=False,
-        voxel_size=voxel_size,
-        with_cluster_center=True,
+        with_cluster_center=False,
         with_voxel_center=True,
+        voxel_size=voxel_size,
         point_cloud_range=point_cloud_range,
         norm_cfg=dict(type='BN1d', eps=1e-3, momentum=0.01),
         mode='max'),
