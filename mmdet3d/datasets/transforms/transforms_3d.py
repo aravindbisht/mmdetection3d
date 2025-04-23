@@ -2730,13 +2730,11 @@ class LightweightPointAugmentation(BaseTransform):
             
         points = data['points']
         
-        # Convert points to numpy array if it's a tensor
-        if isinstance(points, torch.Tensor):
+        # Convert points to numpy array
+        if hasattr(points, 'tensor'):
+            points = points.tensor.detach().cpu().numpy()
+        elif isinstance(points, torch.Tensor):
             points = points.detach().cpu().numpy()
-        
-        # Ensure points is a 2D array
-        if points.ndim == 1:
-            points = points.reshape(1, -1)
         
         # Apply sparse point dropout
         if self.drop_ratio > 0:
@@ -2773,11 +2771,12 @@ class LightweightPointAugmentation(BaseTransform):
             sample_indices = np.random.choice(num_points, num_sample, replace=False)
             points = points[sample_indices]
         
-        # Convert back to tensor if input was tensor
-        if isinstance(data['points'], torch.Tensor):
-            points = torch.from_numpy(points).float()
-        
-        data['points'] = points
+        # Convert back to LiDARPoints if input was LiDARPoints
+        if hasattr(data['points'], 'tensor'):
+            data['points'].tensor = torch.from_numpy(points).float()
+        else:
+            data['points'] = points
+            
         return data
 
 @TRANSFORMS.register_module()
