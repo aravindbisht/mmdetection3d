@@ -36,16 +36,9 @@ model = dict(
         norm_cfg=dict(type='BN', requires_grad=False),
         num_outs=5),
     pts_voxel_encoder=dict(
-        type='DynamicVFE',
-        in_channels=4,  # x, y, z, intensity
-        feat_channels=[20, 20],
-        with_distance=False,
-        with_cluster_center=False,
-        with_voxel_center=False,
+        type='DynamicSimpleVFE',
         voxel_size=voxel_size,
-        point_cloud_range=point_cloud_range,
-        norm_cfg=dict(type='BN1d', eps=1e-3, momentum=0.01),
-        mode='max'),
+        point_cloud_range=point_cloud_range),
     pts_fusion_layer=dict(
         type='LightweightAttentionFusion',
         img_channels=128,  # Match FPN output channels
