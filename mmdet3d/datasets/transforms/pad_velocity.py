@@ -1,4 +1,4 @@
-from mmengine.model import BaseTransform
+from mmcv.transforms import BaseTransform
 from mmdet3d.registry import TRANSFORMS
 import torch
 
