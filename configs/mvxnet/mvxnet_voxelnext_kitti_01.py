@@ -78,11 +78,21 @@ model = dict(
         dropout=0.1,
         use_sparse_attention=True),
     pts_bbox_head=dict(
-        type='VoxelNeXtHead',
+        type='Anchor3DHead',
+        num_classes=3,
         in_channels=128,
         feat_channels=128,
-        num_classes=3,
         use_direction_classifier=True,
+        anchor_generator=dict(
+            type='Anchor3DRangeGenerator',
+            ranges=[[0, -40.0, -1.8, 70.4, 40.0, -1.8]],
+            sizes=[[1.6, 3.9, 1.56]],
+            rotations=[0, 1.57],
+            reshape_out=False),
+        assigner_per_size=True,
+        diff_rad_by_sin=True,
+        assign_per_class=True,
+        bbox_coder=dict(type='DeltaXYZWLHRBBoxCoder'),
         loss_cls=dict(
             type='mmdet.FocalLoss',
             use_sigmoid=True,
@@ -90,17 +100,9 @@ model = dict(
             alpha=0.25,
             loss_weight=1.0),
         loss_bbox=dict(
-            type='mmdet.SmoothL1Loss',
-            beta=1.0,
-            loss_weight=1.0),
+            type='mmdet.SmoothL1Loss', beta=1.0, loss_weight=2.0),
         loss_dir=dict(
-            type='mmdet.CrossEntropyLoss',
-            use_sigmoid=False,
-            loss_weight=0.2),
-        loss_iou=dict(
-            type='RotatedIoU3DLoss',
-            loss_weight=1.0),
-        bbox_coder=dict(type='DeltaXYZWLHRBBoxCoder')),
+            type='mmdet.CrossEntropyLoss', use_sigmoid=False, loss_weight=0.2)),
     train_cfg=dict(
         pts=dict(
             assigner=dict(
