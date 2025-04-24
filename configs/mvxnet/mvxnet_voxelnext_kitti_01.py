@@ -96,6 +96,7 @@ model = dict(
             voxel_size=[0.05, 0.05, 0.1])),
     test_cfg=dict(
         pts=dict(
+            nms_type='rotate',
             use_rotate_nms=True,
             nms_across_levels=False,
             nms_thr=0.25,
@@ -169,12 +170,12 @@ test_pipeline = [
 modality = dict(use_lidar=True, use_camera=True)
 
 train_dataloader = dict(
-    batch_size=1,
+    batch_size=2,
     num_workers=2,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
         type='RepeatDataset',
-        times=2,
+        times=1,
         dataset=dict(
             type=dataset_type,
             data_root=data_root,
