@@ -83,12 +83,13 @@ model = dict(
         feat_channels=64,
         num_classes=3,
         train_cfg=dict(
-            max_objs=300,
-            dense_reg=1,
-            gaussian_overlap=0.1,
-            min_radius=2,
-            out_size_factor=8,
-            code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])),
+            pts=dict(
+                max_objs=300,
+                dense_reg=1,
+                gaussian_overlap=0.1,
+                min_radius=2,
+                out_size_factor=8,
+                code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))),
     test_cfg=dict(
         pts=dict(
             use_rotate_nms=True,
@@ -253,4 +254,4 @@ visualizer = dict(
     type='Det3DLocalVisualizer', vis_backends=vis_backends, name='visualizer')
 
 # Default setting for scaling LR automatically
-auto_scale_lr = dict(base_batch_size=4)
+auto_scale_lr = dict(base_batch_size=16)
