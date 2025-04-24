@@ -83,16 +83,6 @@ model = dict(
         in_channels=128,
         feat_channels=128,
         use_direction_classifier=True,
-        anchor_generator=dict(
-            type='Anchor3DRangeGenerator',
-            ranges=[[0, -40.0, -1.8, 70.4, 40.0, -1.8]],
-            sizes=[[1.6, 3.9, 1.56]],
-            rotations=[0, 1.57],
-            reshape_out=False),
-        assigner_per_size=True,
-        diff_rad_by_sin=True,
-        assign_per_class=True,
-        bbox_coder=dict(type='DeltaXYZWLHRBBoxCoder'),
         loss_cls=dict(
             type='mmdet.FocalLoss',
             use_sigmoid=True,
@@ -103,18 +93,7 @@ model = dict(
             type='mmdet.SmoothL1Loss', beta=1.0, loss_weight=2.0),
         loss_dir=dict(
             type='mmdet.CrossEntropyLoss', use_sigmoid=False, loss_weight=0.2)),
-    train_cfg=dict(
-        pts=dict(
-            assigner=dict(
-                type='mmdet.MaxIoUAssigner',
-                iou_calculator=dict(type='BboxOverlapsNearest3D'),
-                pos_iou_thr=0.6,
-                neg_iou_thr=0.3,
-                min_pos_iou=0.3,
-                ignore_iof_thr=-1),
-            allowed_border=0,
-            pos_weight=-1,
-            debug=False)),
+    train_cfg=dict(pts=None),
     test_cfg=dict(
         pts=dict(
             use_rotate_nms=True,
