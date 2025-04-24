@@ -20,22 +20,26 @@ class SimpleVoxelScatter(nn.Module):
         voxel_size (Sequence[float]): Voxel size (vx, vy, vz).
         point_cloud_range (Sequence[float]): Point cloud range in the form
             [x_min, y_min, z_min, x_max, y_max, z_max].
+        downsample_stride (Sequence[int]): Downsample stride (ds_z, ds_y, ds_x).
     """
 
     def __init__(self,
                  voxel_size: Sequence[float] = (0.05, 0.05, 0.1),
-                 point_cloud_range: Sequence[float] = (0, -40, -3, 70.4, 40, 1)):
+                 point_cloud_range: Sequence[float] = (0, -40, -3, 70.4, 40, 1),
+                 downsample_stride: Sequence[int] = (2, 4, 4)):
         super().__init__()
         self.voxel_size = voxel_size
         self.point_cloud_range = point_cloud_range
+        self.downsample_stride = downsample_stride
 
         # Pre-compute grid dimensions (Z, Y, X)
         x_min, y_min, z_min, x_max, y_max, z_max = point_cloud_range
         vx, vy, vz = voxel_size
+        ds_z, ds_y, ds_x = downsample_stride
         self.grid_size = (
-            int(round((z_max - z_min) / vz)),
-            int(round((y_max - y_min) / vy)),
-            int(round((x_max - x_min) / vx)),
+            int(round((z_max - z_min) / vz) // ds_z),
+            int(round((y_max - y_min) / vy) // ds_y),
+            int(round((x_max - x_min) / vx) // ds_x),
         )  # (Z, Y, X)
 
     def forward(self,
@@ -59,9 +63,10 @@ class SimpleVoxelScatter(nn.Module):
 
         # Flatten indices for fast scatter
         bs_idx = coors[:, 0].long()
-        z_idx = coors[:, 1].long()
-        y_idx = coors[:, 2].long()
-        x_idx = coors[:, 3].long()
+        ds_z, ds_y, ds_x = self.downsample_stride
+        z_idx = (coors[:, 1] // ds_z).long()
+        y_idx = (coors[:, 2] // ds_y).long()
+        x_idx = (coors[:, 3] // ds_x).long()
 
         output[bs_idx, :, z_idx, y_idx, x_idx] = voxel_features
         return output
