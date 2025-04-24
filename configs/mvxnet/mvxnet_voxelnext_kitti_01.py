@@ -103,9 +103,12 @@ model = dict(
             pre_max_size=1000,
             post_max_size=83,
             post_center_limit_range=[0, -40, -10, 70.4, 40, 10],
-            score_thr=0.05,
+            score_threshold=0.05,
+            max_pool_nms=False,
+            out_size_factor=8,
+            voxel_size=voxel_size[:2],
             min_bbox_size=0,
-            max_num=50)))
+            max_per_img=50)))
 
 # dataset settings
 dataset_type = 'KittiDataset'
