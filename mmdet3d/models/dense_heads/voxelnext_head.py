@@ -32,10 +32,10 @@ class VoxelNeXtHead(CenterHead):
             height=(1, feat_channels),
             dim=(3, feat_channels),
             rot=(2, feat_channels))
-        code_size = 7
+        code_size = 8
         if with_velocity:
             common_heads['vel'] = (2, feat_channels)
-            code_size = 9
+            code_size = 10
 
         super().__init__(
             in_channels=in_channels,
