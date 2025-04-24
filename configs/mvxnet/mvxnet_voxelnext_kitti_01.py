@@ -63,7 +63,7 @@ model = dict(
         layer_strides=[2, 2, 2],
         out_channels=[128, 128, 128],
         sparse_shape=sparse_shape,
-        with_cp=False,
+        with_cp=True,
         use_sparse_conv=False,
         groups=4,
         use_subm_conv=True),
@@ -98,6 +98,9 @@ class_names = ['Pedestrian', 'Cyclist', 'Car']
 metainfo = dict(classes=class_names)
 input_modality = dict(use_lidar=True, use_camera=True)
 backend_args = None
+
+# Enable automatic mixed precision training to further cut memory usage
+fp16 = dict(loss_scale='dynamic')
 
 train_pipeline = [
     dict(type='LoadPointsFromFile', coord_type='LIDAR', load_dim=4, use_dim=4, backend_args=backend_args),
@@ -153,7 +156,7 @@ test_pipeline = [
 modality = dict(use_lidar=True, use_camera=True)
 
 train_dataloader = dict(
-    batch_size=2,
+    batch_size=1,
     num_workers=2,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
