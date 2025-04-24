@@ -67,8 +67,7 @@ model = dict(
         use_sparse_conv=False,
         groups=4,
         use_subm_conv=True),
-    pts_neck=dict(
-        type='BEVPoolNeck', pool_type='max'),
+    pts_neck=dict(type='BEVPoolNeck', pool_type='max'),
     pts_fusion_layer=dict(
         type='LightweightAttentionFusion',
         img_channels=128,
@@ -81,18 +80,8 @@ model = dict(
     pts_bbox_head=dict(
         type='VoxelNeXtHead',
         in_channels=128,
-        feat_channels=128,
-        use_direction_classifier=True,
-        loss_cls=dict(
-            type='mmdet.FocalLoss',
-            use_sigmoid=True,
-            gamma=2.0,
-            alpha=0.25,
-            loss_weight=1.0),
-        loss_bbox=dict(
-            type='mmdet.SmoothL1Loss', beta=1.0, loss_weight=2.0),
-        loss_dir=dict(
-            type='mmdet.CrossEntropyLoss', use_sigmoid=False, loss_weight=0.2)),
+        share_conv_channel=128,
+        num_classes=3),
     train_cfg=dict(pts=None),
     test_cfg=dict(
         pts=dict(
