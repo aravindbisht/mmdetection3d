@@ -8,9 +8,12 @@ from .second_fpn import SECONDFPN
 from .squeeze_fpn import SQUEEZEFPN
 from .voxelnext_neck import VoxelNeXtNeck
 from .optimized_voxelnext_neck import OptimizedVoxelNeXtNeck
+from .bev_pool import BEVPoolNeck
+
 
 
 __all__ = [
     'FPN', 'SECONDFPN', 'OutdoorImVoxelNeck', 'PointNetFPNeck', 'DLANeck',
-    'IndoorImVoxelNeck', 'SQUEEZEFPN', 'VoxelNeXtNeck', 'OptimizedVoxelNeXtNeck'
+    'IndoorImVoxelNeck', 'SQUEEZEFPN', 'VoxelNeXtNeck', 'OptimizedVoxelNeXtNeck',
+    'BEVPoolNeck'
 ]
