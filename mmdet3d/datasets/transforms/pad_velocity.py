@@ -30,7 +30,8 @@ class PadGTBoxVelocity(BaseTransform):
                 'Only support padding 7-dim boxes, ' f'got {tensor.size(-1)}')
             zeros = tensor.new_zeros(tensor.size(0), 2)
             padded = torch.cat([tensor, zeros], dim=-1)
-            input_dict[key] = bboxes.new_box(padded)
+            box_cls = bboxes.__class__
+            input_dict[key] = box_cls(padded, box_dim=9, with_yaw=bboxes.with_yaw)
         return input_dict
 
     def __repr__(self) -> str:
