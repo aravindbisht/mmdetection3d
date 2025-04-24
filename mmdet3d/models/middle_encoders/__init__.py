@@ -3,8 +3,9 @@ from .pillar_scatter import PointPillarsScatter
 from .sparse_encoder import SparseEncoder, SparseEncoderSASSD
 from .sparse_unet import SparseUNet
 from .voxel_set_abstraction import VoxelSetAbstraction
+from .simple_voxel_scatter import SimpleVoxelScatter
 
 __all__ = [
     'PointPillarsScatter', 'SparseEncoder', 'SparseEncoderSASSD', 'SparseUNet',
-    'VoxelSetAbstraction'
+    'VoxelSetAbstraction', 'SimpleVoxelScatter'
 ]
