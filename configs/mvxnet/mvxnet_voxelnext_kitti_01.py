@@ -80,7 +80,6 @@ model = dict(
     pts_bbox_head=dict(
         type='VoxelNeXtHead',
         in_channels=128,
-        share_conv_channel=128,
         num_classes=3),
     train_cfg=dict(pts=None),
     test_cfg=dict(
