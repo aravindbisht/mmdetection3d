@@ -28,7 +28,7 @@ class VoxelNeXtHead(CenterHead):
         super().__init__(
             in_channels=in_channels,
             tasks=tasks,
-            feat_channels=feat_channels,
+            share_conv_channel=feat_channels,
             common_heads=dict(
                 center=(2, feat_channels),
                 center_z=(1, feat_channels),
