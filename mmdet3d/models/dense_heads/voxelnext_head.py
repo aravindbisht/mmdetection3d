@@ -28,7 +28,8 @@ class VoxelNeXtHead(CenterHead):
 
         common_heads = dict(
             center=(2, feat_channels),
-            center_z=(1, feat_channels),
+            reg=(2, feat_channels),
+            height=(1, feat_channels),
             dim=(3, feat_channels),
             rot=(2, feat_channels))
         code_size = 7
