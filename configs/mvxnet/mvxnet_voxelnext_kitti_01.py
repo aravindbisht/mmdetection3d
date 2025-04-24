@@ -118,6 +118,7 @@ train_pipeline = [
     dict(type='LoadPointsFromFile', coord_type='LIDAR', load_dim=4, use_dim=4, backend_args=backend_args),
     dict(type='LoadImageFromFile', backend_args=backend_args),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
+    dict(type='PadGTBoxVelocity', keys=['gt_bboxes_3d']),
     dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
     dict(type='GlobalRotScaleTrans', rot_range=[-0.78539816, 0.78539816], scale_ratio_range=[0.95, 1.05]),
     dict(type='LightweightPointAugmentation', 
