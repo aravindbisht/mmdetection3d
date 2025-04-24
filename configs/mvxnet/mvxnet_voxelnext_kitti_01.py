@@ -170,7 +170,7 @@ test_pipeline = [
 modality = dict(use_lidar=True, use_camera=True)
 
 train_dataloader = dict(
-    batch_size=2,
+    batch_size=1,
     num_workers=2,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
