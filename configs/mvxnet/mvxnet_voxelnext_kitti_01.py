@@ -39,9 +39,9 @@ model = dict(
         init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet18')),
     img_neck=dict(
         type='mmdet.FPN',
-        in_channels=[64, 128, 256],
+        in_channels=[128, 256, 512],
         out_channels=128,
-        num_outs=4),
+        num_outs=3),
     pts_voxel_encoder=dict(
         type='DynamicVFE',
         in_channels=4,
@@ -52,7 +52,10 @@ model = dict(
         voxel_size=voxel_size,
         point_cloud_range=point_cloud_range,
         norm_cfg=dict(type='BN1d', eps=1e-3, momentum=0.01)),
-    pts_middle_encoder=None,
+    pts_middle_encoder=dict(
+        type='SimpleVoxelScatter',
+        voxel_size=voxel_size,
+        point_cloud_range=point_cloud_range),
     pts_backbone=dict(
         type='LightweightVoxelNeXtBackbone',
         in_channels=32,
