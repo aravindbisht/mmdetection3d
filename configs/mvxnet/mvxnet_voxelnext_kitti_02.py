@@ -96,7 +96,7 @@ model = dict(
         in_channels=96,
         feat_channels=96,
         num_classes=3,
-        with_velocity=False),
+        with_velocity=True),
 
     train_cfg=dict(
         pts=dict(
@@ -105,7 +105,7 @@ model = dict(
             gaussian_overlap=0.1,
             min_radius=2,
             out_size_factor=8,
-            code_weights=[1.0]*7,
+            code_weights=[1.0]*10,
             grid_size=[1408, 1600, 40],
             point_cloud_range=point_cloud_range,
             voxel_size=voxel_size)),
