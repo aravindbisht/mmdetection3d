@@ -71,31 +71,28 @@ model = dict(
         out_channels=[96, 96, 96],
         sparse_shape=sparse_shape,
         groups=4,
-        use_sparse_conv=True,
+        use_sparse_conv=False,
         use_subm_conv=True,
         with_cp=False),
 
-    # BEV neck (multi-scale context)
+    # Collapse 3D tensor to BEV 2D
     pts_neck=dict(
-        type='SECONDFPN',
-        in_channels=[96, 96, 96],
-        upsample_strides=[1, 2, 4],
-        out_channels=[192, 192, 192]),
+        type='BEVPoolNeck',
+        pool_type='max'),
 
-    # Fusion layer (update channels to 192 after neck)
+    # Fusion layer (update channels after neck)
     pts_fusion_layer=dict(
         type='LightweightAttentionFusion',
         img_channels=64,
-        pts_channels=192,
-        mid_channels=192,
-        out_channels=192,
+        pts_channels=96,
+        mid_channels=96,
+        out_channels=96,
         num_heads=2,
         dropout=0.1,
         use_sparse_attention=True),
 
     pts_bbox_head=dict(
-        type='VoxelNeXtHead',
-        in_channels=192,
+        in_channels=96,
         feat_channels=96,
         num_classes=3,
         with_velocity=False),
