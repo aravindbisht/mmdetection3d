@@ -92,6 +92,7 @@ model = dict(
         use_sparse_attention=True),
 
     pts_bbox_head=dict(
+        type='VoxelNeXtHead',
         in_channels=96,
         feat_channels=96,
         num_classes=3,
