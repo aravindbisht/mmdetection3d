@@ -1,6 +1,5 @@
-# Stand-alone MVX-Net (SqueezeFPN camera branch) + FireRPFNet
-# for KITTI 3-class.  No dependency on other MVX configs – only schedule &
-# default_runtime are inherited.
+# MVX-Net (Squeeze+BiFPN camera branch + FireRPFNet lidar) WITH PRETRAINED BACKBONE
+# for KITTI 3-class using ImageNet pretrained SqueezeNet weights with BiFPN
 
 _base_ = ['../_base_/schedules/cosine.py', '../_base_/default_runtime.py']
 
@@ -14,7 +13,7 @@ point_cloud_range = [0, -40, -3, 70.4, 40, 1]
 # Model
 # -----------------------------------------------------------------------------
 model = dict(
-    type='DynamicMVXFasterRCNN',
+    type='DynamicMVXFasterRCNN',  # Using BiFPN for better feature fusion
     # --------------------------------------------------
     data_preprocessor=dict(
         type='Det3DDataPreprocessor',
@@ -30,18 +29,31 @@ model = dict(
         bgr_to_rgb=False,
         pad_size_divisor=32),
 
-    # ----------------------- image branch -----------------------
+    # ----------------------- image branch (WITH PRETRAINED WEIGHTS) -----------------------
     img_backbone=dict(
-        type='SQUEEZE',
+        type='SQUEEZEv2',  # Use enhanced version with pretrained support
         in_channels=3,
         out_channels=[64, 128, 256, 512],
+        frozen_stages=1,  # Freeze stem + first fire modules (0=stem, 1=stage1)
+        norm_eval=True,   # Keep BatchNorm in eval mode
         norm_cfg=dict(type='BN', eps=1e-3, momentum=0.01),
-        conv_cfg=dict(type='Conv2d', bias=False)),
+        conv_cfg=dict(type='Conv2d', bias=False),
+        # Load pretrained ImageNet weights from torchvision (just like ResNet!)
+        init_cfg=dict(
+            type='Pretrained',
+            checkpoint='torchvision://squeezenet1_1')),  # Automatic download & caching
+
     img_neck=dict(
-        type='SQUEEZEFPN',
-        in_channels=[64, 128, 256, 512],
-        out_channels=[512, 512, 512, 512],
-        norm_cfg=dict(type='BN', requires_grad=False)),
+        type='BiFPN',
+        in_channels=[64, 128, 256, 512],  # Input channels from backbone
+        out_channels=256,                 # Output channels for each feature level
+        num_outs=4,                       # Number of output feature levels
+        stack=2,                          # Number of BiFPN blocks (reduced from 3 to save memory)
+        start_level=0,                    # Start from the first feature map
+        end_level=-1,                     # End at the last feature map
+        add_extra_convs=False,            # Don't add extra convs
+        norm_cfg=dict(type='BN', requires_grad=True, eps=1e-3, momentum=0.01),
+        act_cfg=dict(type='ReLU', inplace=True)),
 
     # ----------------------- LiDAR voxel encoder ----------------
     pts_voxel_encoder=dict(
@@ -55,7 +67,7 @@ model = dict(
         point_cloud_range=point_cloud_range,
         fusion_layer=dict(
             type='PointFusion',
-            img_channels=512,
+            img_channels=256,  # Changed from 512 to match BiFPN output
             pts_channels=64,
             mid_channels=128,
             out_channels=128,
@@ -77,7 +89,7 @@ model = dict(
         in_channels=256,               # output of SparseEncoder
         layer_channels=[128, 256, 256, 256],
         with_cbam=True),
-        
+
     pts_neck=None,                    # RPFNet is already deep enough
 
     # ----------------------- Anchor head ------------------------
@@ -131,7 +143,7 @@ model = dict(
 )
 
 # -----------------------------------------------------------------------------
-# Dataset & pipelines (identical to original MVX squeeze-FPN config)
+# Dataset & pipelines
 # -----------------------------------------------------------------------------
 
 # dataset settings
@@ -199,19 +211,13 @@ test_dataloader = val_dataloader
 # -----------------------------------------------------------------------------
 # Optimizer / Schedulers / Runtime
 # -----------------------------------------------------------------------------
-optim_wrapper = dict(optimizer=dict(lr=0.001, weight_decay=0.01),
-                     clip_grad=dict(max_norm=35, norm_type=2))
+# Note: With pretrained weights, you might want to use a lower learning rate
+# or differential learning rates for pretrained vs randomly initialized layers
+optim_wrapper = dict(
+    optimizer=dict(lr=0.001, weight_decay=0.01),  # Consider reducing lr to 0.0005 with pretrained
+    clip_grad=dict(max_norm=35, norm_type=2))
 
 val_evaluator = dict(type='KittiMetric', ann_file='data/kitti/kitti_infos_val.pkl')
-
-
-# optim_wrapper = dict(
-#     optimizer=dict(weight_decay=0.01),
-#     clip_grad=dict(max_norm=35, norm_type=2),
-# )
-# val_evaluator = dict(
-#     type='KittiMetric', ann_file='data/kitti/kitti_infos_val.pkl')
-
 test_evaluator = val_evaluator
 
 vis_backends = [dict(type='LocalVisBackend')]
@@ -222,27 +228,22 @@ visualizer = dict(
 custom_hooks = [
     dict(
         type='EarlyStoppingHook',
-        monitor='Kitti metric/pred_instances_3d/KITTI/Car_3D_AP40_moderate_strict',
+        monitor='Kitti metric/pred_instances_3d/KITTI/Car_3D_AP40_moderate_loose',  # Monitor moderate difficulty 3D AP40
         patience=5,  # Number of epochs to wait before stopping
         rule='greater',  # Stop when the metric stops increasing
         min_delta=0.001,  # Minimum change to qualify as improvement
     )
 ]
-
-# train_cfg to increase max_epochs since we have early stopping
-train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=20, val_interval=1)
+# Faster convergence with pretrained weights
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=5, val_interval=5)
 
 # Add checkpoint configuration
 default_hooks = dict(
     checkpoint=dict(
         type='CheckpointHook',
         interval=1,
-        save_best='Kitti metric/pred_instances_3d/KITTI/Car_3D_AP40_moderate_strict',
+        save_best='Kitti metric/pred_instances_3d/KITTI/Car_3D_AP40_moderate_loose',
         rule='greater',
-        max_keep_ckpts=10  # Keep only the best 5 checkpoints
+        max_keep_ckpts=10  # Keep only the best 3 checkpoints
     )
 )
-
-# Optional: if you reduced channels you can shrink head
-# model['pts_bbox_head']['in_channels'] = 256
-# model['pts_bbox_head']['feat_channels'] = 256
