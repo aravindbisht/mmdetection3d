@@ -73,9 +73,9 @@ model = dict(
 
     # ----------------------- FireRPFNet backbone -------------
     pts_backbone=dict(
-        type='FireRPFNet',
+        type='FireRPFNetV2',
         in_channels=256,               # output of SparseEncoder
-        layer_channels=[128, 256, 256, 256],
+        out_channels=[128, 256, 256, 256],
         with_cbam=True),
         
     pts_neck=None,                    # RPFNet is already deep enough

@@ -96,3 +96,69 @@ class FireRPFNet(nn.Module):
         for stage in self.stages:
             x = stage(x)
         return (x, )
+
+
+@MODELS.register_module()
+class FireRPFNetV2(nn.Module):
+    """Residual FireNet backbone (SqueezeNet-inspired) with CBAM.
+
+    Designed as a drop-in replacement for RPFNet in BEV pipelines.
+    Can output single-scale or multi-scale features for use with/without FPN necks.
+
+    Args:
+        in_channels (int): Input channels. Default: 256.
+        out_channels (tuple[int] | list[int]): Output channels for each stage.
+            Default: (128, 256, 256, 256).
+        with_cbam (bool): Whether to use CBAM attention after each stage.
+            Default: True.
+        multi_scale_output (bool): If True, returns multi-scale features from all stages
+            (for use with SECONDFPN neck). If False, returns only the last stage output
+            (backward compatible, for use without neck). Default: False.
+        norm_cfg (dict): Normalization config.
+            Default: dict(type='BN', eps=1e-3, momentum=0.01).
+    """
+
+    def __init__(self,
+                 in_channels=256,
+                 out_channels=(128, 256, 256, 256),
+                 with_cbam=True,
+                 multi_scale_output=False,
+                 norm_cfg=dict(type='BN', eps=1e-3, momentum=0.01)):
+        super().__init__()
+        self.multi_scale_output = multi_scale_output
+        layers = []
+        ch = in_channels
+        for out_ch in out_channels:
+            block = FireBlock(ch, out_ch, norm_cfg)
+            stage = [block]
+            if with_cbam:
+                stage.append(CBAM(out_ch))
+            layers.append(nn.Sequential(*stage))
+            ch = out_ch
+        self.stages = nn.ModuleList(layers)
+
+    def forward(self, x):
+        """Forward pass.
+
+        Args:
+            x (torch.Tensor): Input feature map (N, C, H, W).
+
+        Returns:
+            tuple[torch.Tensor]:
+                - If multi_scale_output=False: Single-element tuple with last stage output
+                - If multi_scale_output=True: Multi-element tuple with all stage outputs
+        """
+        if self.multi_scale_output:
+            # Return multi-scale features for FPN neck
+            outs = []
+            for stage in self.stages:
+                x = stage(x)
+                outs.append(x)
+            for out in outs:
+                print(out.shape)
+            return tuple(outs)
+        else:
+            # Return only last stage (backward compatible)
+            for stage in self.stages:
+                x = stage(x)
+            return (x, )
