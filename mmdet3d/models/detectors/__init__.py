@@ -21,6 +21,11 @@ from .smoke_mono3d import SMOKEMono3D
 from .ssd3dnet import SSD3DNet
 from .votenet import VoteNet
 from .voxelnet import VoxelNet
+<<<<<<< Updated upstream
+from .isfusion import ISFusionDetector
+=======
+from .transfusion import TransFusionDetector
+>>>>>>> Stashed changes
 
 __all__ = [
     'Base3DDetector', 'VoxelNet', 'DynamicVoxelNet', 'MVXTwoStageDetector',
@@ -28,5 +33,9 @@ __all__ = [
     'CenterPoint', 'SSD3DNet', 'ImVoteNet', 'SingleStageMono3DDetector',
     'FCOSMono3D', 'ImVoxelNet', 'GroupFree3DNet', 'PointRCNN', 'SMOKEMono3D',
     'SASSD', 'MinkSingleStage3DDetector', 'MultiViewDfM', 'DfM',
-    'PointVoxelRCNN'
+<<<<<<< Updated upstream
+    'PointVoxelRCNN', 'ISFusionDetector'
+=======
+    'PointVoxelRCNN', 'TransFusionDetector'
+>>>>>>> Stashed changes
 ]
