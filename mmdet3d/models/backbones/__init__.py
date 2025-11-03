@@ -4,7 +4,7 @@ from mmdet.models.backbones import SSDVGG, HRNet, ResNet, ResNetV1d, ResNeXt
 from .cylinder3d import Asymm3DSpconv
 from .dgcnn import DGCNNBackbone
 from .dla import DLANet
-from .fire_rpfnet import FireRPFNet, FireRPFNetV2
+from .fire_rpfnet import FireRPFNet, FireRPFNetV2, FireRPFNet2D
 from .mink_resnet import MinkResNet
 from .minkunet_backbone import MinkUNetBackbone
 from .multi_backbone import MultiBackbone
@@ -21,5 +21,5 @@ __all__ = [
     'SECOND', 'DGCNNBackbone', 'PointNet2SASSG', 'PointNet2SAMSG',
     'MultiBackbone', 'DLANet', 'MinkResNet', 'Asymm3DSpconv',
     'MinkUNetBackbone', 'SPVCNNBackbone', 'MinkUNetBackboneV2','SQUEEZE',
-    'RPFNet', 'FireRPFNet', 'FireRPFNetV2'
+    'RPFNet', 'FireRPFNet', 'FireRPFNetV2', 'FireRPFNet2D'
 ]
