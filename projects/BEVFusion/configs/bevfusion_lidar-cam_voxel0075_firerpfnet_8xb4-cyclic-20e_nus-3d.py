@@ -233,3 +233,5 @@ default_hooks = dict(
     logger=dict(type='LoggerHook', interval=50),
     checkpoint=dict(type='CheckpointHook', interval=1))
 del _base_.custom_hooks
+
+work_dir = './work_dirs/bevfusion_lidar-cam_voxel0075_firerpfnet_8xb4-cyclic-20e_nus-3d'
